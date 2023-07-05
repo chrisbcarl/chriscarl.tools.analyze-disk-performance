@@ -1,0 +1,15 @@
+[MASTER]
+jobs=4
+ignore-patterns =
+    **/tests/**
+    **/ignoreme/**
+
+[MESSAGES CONTROL]
+disable =
+    missing-docstring
+
+[BASIC]
+good-names=_,i,j,k,m,ex,fd,id,mb,ns,log,e
+
+[FORMAT]
+max-line-length=120

@@ -17,6 +17,13 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
   IN THE SOFTWARE.
+
+Author:     Chris Carl <chrisbcarl@outlook.com>
+Date:       2023-07-05
+Modified:   2023-07-05
+
+Modified:
+    2023-07-05 - chrisbcarl@outlook.com - init commit, behaves like sequential write/readback, thats it.
 '''
 
 from __future__ import print_function, division
@@ -35,7 +42,11 @@ if __name__ == '__main__':
     parser.add_argument('path', type=str)
     parser.add_argument('--time', type=int, default=-1, help='length of time to execute in seconds, else infinite')
     parser.add_argument('--mb', type=int, default=10, help='megabytes to write')
-    parser.add_argument('--overwrite', action='store_true', help='if set, overwrite a single file instead of constantly filling the disk')
+    parser.add_argument(
+        '--overwrite',
+        action='store_true',
+        help='if set, overwrite a single file instead of constantly filling the disk'
+    )
 
     args = parser.parse_args()
 
