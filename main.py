@@ -36,6 +36,7 @@ import argparse
 import datetime
 
 MEGABYTE = 1 * 1024 * 1024
+CACHE_FOLDER = os.path.abspath(os.path.join(os.getcwd(), '.generated'))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -49,31 +50,43 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-
     dirpath = os.path.abspath(os.path.join(args.path, 'sequential-write'))
     if not os.path.isdir(dirpath):
         os.makedirs(dirpath)
+    if not os.path.isdir(CACHE_FOLDER):
+        os.makedirs(CACHE_FOLDER)
+
+    print('starting')
     print('writing', args.mb, 'mb to', dirpath, end=' ')
     print('w/{} replacement'.format('' if args.overwrite else 'o'), end=' ')
     print('for {}'.format('infinity' if args.time == -1 else '{} seconds'.format(args.time)), end='\n')
 
+    print('generating a random file of {}mb'.format(args.mb))
     reads, writes = [], []
     try:
-        data = bytearray(random.randint(0, 127) for _ in range(args.mb * MEGABYTE))
-        tmp_filepath = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
-        with open(tmp_filepath, 'wb') as wb:
-            wb.write(data)
-        megabytes = os.path.getsize(tmp_filepath) / MEGABYTE
+        data_filepath = os.path.join(CACHE_FOLDER, '{}mb.data'.format(args.mb * MEGABYTE))
+        if os.path.isfile(data_filepath):
+            print('using previously generated file "{}"'.format(data_filepath))
+            with open(data_filepath, 'rb') as rb:
+                data = rb.read()
+        else:
+            data = bytearray(random.randint(0, 127) for _ in range(args.mb * MEGABYTE))
+            # tmp_filepath = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+            print('writing generated data to file "{}"'.format(data_filepath))
+            with open(data_filepath, 'wb') as wb:
+                wb.write(data)
+        megabytes = os.path.getsize(data_filepath) / MEGABYTE
         megabyte_str = '{:0.3f} mb'.format(megabytes)
         print('data is os.path.getsize', megabyte_str)
     except (KeyboardInterrupt, Exception):
         print('could not create file, dying.')
         raise
 
+    print('starting benchmark...')
     i = 0
     start = datetime.datetime.now()
     delta = datetime.timedelta(seconds=args.time)
-    filepath = os.path.join(dirpath, str(uuid.uuid4()))
+    samefile = os.path.join(dirpath, str(uuid.uuid4()))
     loop = True
     while loop:
         i += 1
@@ -82,7 +95,9 @@ if __name__ == '__main__':
                 filepath = os.path.join(dirpath, str(i))
             print(filepath, ' writing...', end=' ')
             write = datetime.datetime.now()
-            shutil.copy(tmp_filepath, filepath)
+            # res = shutil.copy(data_filepath, filepath)  # this causes disc writes on the source disk
+            with open(filepath, 'wb') as wb:
+                wb.write(data)
             write_time = datetime.datetime.now() - write
             writes.append(write_time)
             write_rate = megabytes / write_time.total_seconds()
@@ -90,14 +105,16 @@ if __name__ == '__main__':
 
             print('reading...', end=' ')
             read = datetime.datetime.now()
+            # BUG: this is wrong... whatever i'm reading isnt right
+            #   on my sata3 ssd its 1792.215 mb/s, thats impossible
             with open(filepath, 'rb') as rb:
-                written = rb.read()
+                written = rb.read()  # its as if this read is completely skipped...
             read_time = datetime.datetime.now() - read
             reads.append(read_time)
             read_rate = megabytes / read_time.total_seconds()
             print('{:0.3f} mb/s'.format(read_rate), end=' ')
 
-            if not data == written:
+            if data != written:
                 print('data integrity failed on iteration', i)
                 break
             print()
@@ -110,6 +127,7 @@ if __name__ == '__main__':
             print()
             print('turns out, the writes/reads are so fast that python thinks it took 0 seconds... increase size?')
             raise
+        # TODO: OSError: [Errno 28] No space left on device
 
         if args.time != -1:
             loop = datetime.datetime.now() - start < delta
@@ -125,6 +143,3 @@ if __name__ == '__main__':
     print('elapsed   :', elapsed, 's')
     print('write rate:', '{:0.3f} mb/s'.format(write_rate))
     print('read rate :', '{:0.3f} mb/s'.format(read_rate))
-
-    if os.path.isfile(tmp_filepath):
-        os.remove(tmp_filepath)

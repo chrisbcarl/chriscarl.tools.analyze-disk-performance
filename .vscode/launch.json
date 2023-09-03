@@ -15,7 +15,8 @@
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
-                "/tmp", "--mb", "10", "--time", "60"
+                // "/tmp", "--mb", "32", "--time", "60"
+                "L:/tmp", "--mb", "32", "--time", "60"
             ]
         },
     ]
