@@ -2,7 +2,7 @@
 # encoding: utf-8
 '''
 The MIT License (MIT)
-Copyright © 2023 Chris Carl <chris.carl@intel.com>
+Copyright © 2023 Chris Carl <chrisbcarl@outlook.com>
 Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the “Software”), to
   deal in the Software without restriction, including without limitation the
@@ -275,7 +275,7 @@ def main():
         group.add_argument('--log-level', type=str, default=LOG_LEVEL, choices=LOG_LEVELS, help='log level')
     args = parser.parse_args()
     validate_kwargs(**vars(args))
-    logging.basicConfig(format='%(asctime)s - %(levelname)10s - %(funcName)32s - %(message)s', level=args.log_level)
+    logging.basicConfig(format='%(asctime)s - %(levelname)10s - %(funcName)48s - %(message)s', level=args.log_level)
     logging.info('starting %r', args.operation)
     if args.operation == 'perf':
         create_byte_array_high_throughput(fill=args.fill, data_filepath=args.data_filepath, perf_filepath=args.perf_filepath)
