@@ -25,6 +25,7 @@ Modified:   2024-09-26
 
 Modified:
     2024-09-26 - chrisbcarl@outlook.com - complete rewrite with different modes this time
+    2023-07-05 - chrisbcarl@outlook.com - init commit, behaves like sequential write/readback, thats it.
 '''
 # stdlib
 from __future__ import print_function, division
@@ -37,10 +38,10 @@ import random
 import time
 import threading
 import multiprocessing
-import pandas as pd
 from typing import Tuple
 
 # 3rd party
+import pandas as pd
 import psutil
 
 TEMP_DIRPATH = '/temp' if sys.platform == 'win32' else '/tmp'
@@ -159,7 +160,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH):
     Returns:
     '''
     validate_kwargs(data_filepath=data_filepath)
-    logging.info('data_filepath="%s"')
+    logging.info('data_filepath="%s"', data_filepath)
 
     drive, _ = os.path.splitdrive(os.path.abspath(data_filepath))
 
