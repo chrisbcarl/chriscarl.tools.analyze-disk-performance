@@ -24,8 +24,12 @@ Date:       2024-09-26
 Modified:   2024-09-26
 
 Modified:
+    2024-09-28 - chrisbcarl@outlook.com - added "write" mode, much easier.
     2024-09-26 - chrisbcarl@outlook.com - complete rewrite with different modes this time
     2023-07-05 - chrisbcarl@outlook.com - init commit, behaves like sequential write/readback, thats it.
+
+TODO:
+    - deal with the situation where create_bytearray would result in a bytearray the size larger than the universe. better would be to make some object that when you ask for an index or the next byte, it GENRATES it, is writable, etc...
 '''
 # stdlib
 from __future__ import print_function, division
@@ -49,7 +53,7 @@ TEMP_DIRPATH = os.path.abspath(TEMP_DIRPATH)
 DRIVE, _ = os.path.splitdrive(TEMP_DIRPATH)
 DATA_FILEPATH = os.path.join(TEMP_DIRPATH, 'data.dat')
 PERF_FILEPATH = os.path.join(TEMP_DIRPATH, 'perf.csv')
-OPERATIONS = ['perf', 'fill', 'perf+fill', 'loop']
+OPERATIONS = ['perf', 'fill', 'perf+fill', 'loop', 'write']
 CPU_COUNT = multiprocessing.cpu_count()
 LOG_LEVELS = list(logging._nameToLevel)  # pylint: disable=(protected-access)
 LOG_LEVEL = 'INFO'
@@ -57,6 +61,7 @@ FILL = -1
 DURATION = 5
 ITERATIONS = 10
 SIZE = 1
+UNTIL = -1
 
 class NiceFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter, argparse.RawDescriptionHelpFormatter):
     pass
@@ -99,6 +104,7 @@ def validate_kwargs(
     size=SIZE,
     duration=DURATION,
     iterations=ITERATIONS,
+    no_optimizations=False,
     data_filepath=DATA_FILEPATH,
     perf_filepath=PERF_FILEPATH
 ):
@@ -106,15 +112,17 @@ def validate_kwargs(
         raise KeyError(f'operation {operation!r} does not exist, use one of {OPERATIONS}!')
     if log_level not in LOG_LEVELS:
         raise KeyError(f'log_level {log_level!r} does not exist!')
-    if size < 1:
-        raise ValueError('duration must be a postive int, are you nuts?')
     if fill != -1:
         if fill < 0 and 255 < fill:
             raise ValueError('fill must be a value between [0,255] or -1')
+    if size < 1:
+        raise ValueError('duration must be a postive int, are you nuts?')
     if duration < 0:
         raise ValueError('duration must be a postive num, are you nuts?')
     if iterations < 0:
         raise ValueError('iterations must be a postive int, are you nuts?')
+    if not isinstance(no_optimizations, bool):
+        raise TypeError(f'no_optimizations must be of type bool, provided {type(no_optimizations)}')
     for filepath in [data_filepath, perf_filepath]:
         if not os.path.isdir(os.path.dirname(filepath)):
             os.makedirs(os.path.dirname(filepath))
@@ -230,9 +238,44 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
     logging.info('%s kb - %0.3f mb/s - sweetspot', sweetspot_killobytes, sweetspot_rate)
     return sweetspot_bytearray
 
+
+def write_bytearray(size, fill=FILL, no_optimizations=False, data_filepath=DATA_FILEPATH):
+    # type: (int, int, bool, str) -> bytearray
+    '''
+    Description:
+        basically just create a file of a certain size.
+        TODO: be wary of too large sizes on no_optimizations
+    '''
+    logging.info('%s, fill=%s, no_optimizations=%s, data_filepath="%s"', size, fill, no_optimizations, data_filepath)
+    if no_optimizations:
+        byte_array = create_bytearray(size, fill=fill)
+        with open(data_filepath, 'wb') as wb:
+            wb.write(byte_array)
+    else:
+        if size < 1024**2:
+            byte_array = create_bytearray(size, fill=fill)
+        else:
+            byte_array = create_bytearray(1024**2, fill=fill)  # 1mb is pretty performant no matter what
+        with open(data_filepath, 'wb') as wb:
+            pass
+        iterations = size // len(byte_array)
+        with open(data_filepath, 'ab') as wb:
+            for i in range(iterations):
+                # basically "fake" randomness even further by starting at different points within the already created one.
+                # if fill is provided, they're all constants anyway
+                midpoint = random.randint(0, len(byte_array) - 1)
+                wb.write(byte_array[midpoint:])
+                wb.write(byte_array[0:midpoint])
+                logging.debug('%0.3f%% or %0.3f MB written', (i + 1) / (iterations + 1) * 100, os.path.getsize(data_filepath) / 1024**2)
+            remainder = size - os.path.getsize(data_filepath)
+            wb.write(byte_array[0:remainder])
+            logging.debug('%0.3f%% or %0.3f MB written', (i + 2) / (iterations + 1) * 100, os.path.getsize(data_filepath) / 1024**2)
+
+
 def main():
     parser = argparse.ArgumentParser(prog='fill-the-drive', description=__doc__, formatter_class=NiceFormatter)
     operations = parser.add_subparsers(help='different operations we can do')
+
     op0 = operations.add_parser(
         'perf',
         help='analyze the performance of the drive which determines a file size that is fastest to write',
@@ -240,6 +283,7 @@ def main():
         formatter_class=NiceFormatter,
     )
     op0.set_defaults(operation='perf')
+
     op1 = operations.add_parser(
         'fill',
         help='fill up the disk',
@@ -249,6 +293,7 @@ def main():
     op1.set_defaults(operation='fill')
     group = op1.add_argument_group('operation specific')
     group.add_argument('--size', type=int, default=SIZE, help='size in killobytes, so --size * 1024B')
+
     op2 = operations.add_parser(
         'perf+fill',
         help='do perf+fill',
@@ -256,6 +301,8 @@ def main():
         formatter_class=NiceFormatter,
     )
     op2.set_defaults(operation='perf+fill')
+    group = op2.add_argument_group('operation specific')
+
     op3 = operations.add_parser(
         'loop',
         help='repeatedly write to the disk for some size and duration',
@@ -267,27 +314,48 @@ def main():
     group.add_argument('--size', type=int, default=SIZE, help='size in killobytes, so --size * 1024B')
     group.add_argument('--duration', type=int, default=DURATION, help='either run till --duration in seconds or --iteration is exceeded')
     group.add_argument('--iterations', type=int, default=ITERATIONS, help='either run till --duration in seconds or --iteration is exceeded')
-    for op in [op0, op1, op2, op3]:
+
+    op4 = operations.add_parser(
+        'write',
+        help='repeatedly write to the disk for some size and duration',
+        description=write_byte_array_continuously.__doc__,
+        formatter_class=NiceFormatter,
+    )
+    op4.set_defaults(operation='write')
+    group = op4.add_argument_group('operation specific')
+    group.add_argument('--size', type=int, default=SIZE, help='size in bytes')
+    group.add_argument('--no-optimizations', '--no_optimizations', action='store_true', help='generate the FULL byte_array in memory, no matter how unreasonable.')
+
+    for op in [op0, op1, op2, op3, op4]:
         group = op.add_argument_group('general')
         group.add_argument('--data-filepath', type=str, default=DATA_FILEPATH, help='where to dump the file that fills the disk.')
         group.add_argument('--perf-filepath', type=str, default=PERF_FILEPATH, help='where to dump the csv with performance data.')
         group.add_argument('--fill', type=int, default=FILL, help='fill bytearray with a constant byte value, default means random.')
         group.add_argument('--log-level', type=str, default=LOG_LEVEL, choices=LOG_LEVELS, help='log level')
+
     args = parser.parse_args()
     validate_kwargs(**vars(args))
+
     logging.basicConfig(format='%(asctime)s - %(levelname)10s - %(funcName)48s - %(message)s', level=args.log_level)
     logging.info('starting %r', args.operation)
+
     if args.operation == 'perf':
         create_byte_array_high_throughput(fill=args.fill, data_filepath=args.data_filepath, perf_filepath=args.perf_filepath)
+
     elif args.operation == 'perf+fill':
         sweetspot_byte_array = create_byte_array_high_throughput(data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, fill=args.fill)
         write_byte_array_contiguously(sweetspot_byte_array, data_filepath=args.data_filepath)
+
     elif args.operation in ['fill', 'loop']:
         byte_array = create_bytearray_killobytes(args.size, fill=args.fill)
         if args.operation == 'fill':
             write_byte_array_contiguously(byte_array, data_filepath=args.data_filepath)
         elif args.operation == 'loop':
             write_byte_array_continuously(byte_array, data_filepath=args.data_filepath, duration=args.duration, iterations=args.iterations)
+
+    elif args.operation == 'write':
+        write_bytearray(args.size, fill=args.fill, no_optimizations=args.no_optimizations, data_filepath=args.data_filepath)
+
     logging.info('done %r', args.operation)
 
 

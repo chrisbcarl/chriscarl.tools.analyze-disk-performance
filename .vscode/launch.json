@@ -2,7 +2,7 @@
     "configurations": [
         {
             "name": "Python: Current File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
@@ -10,13 +10,30 @@
         },
         {
             "name": "sequential-write",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
                 // "/tmp", "--mb", "32", "--time", "60"
-                "L:/tmp", "--mb", "32", "--time", "60"
+                "L:/tmp",
+                "--mb",
+                "32",
+                "--time",
+                "60"
+            ]
+        },
+        {
+            "name": "write",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "write",
+                "--size",
+                "4194303",  // 4MB - 1
+                "--log-level", "DEBUG"
             ]
         },
     ]
