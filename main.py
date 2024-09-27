@@ -376,7 +376,7 @@ def main():
 
     elif args.operation == 'perf+write':
         sweetspot_byte_array = create_byte_array_high_throughput(data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, fill=args.fill)
-        write_bytearray_to_disk(sweetspot_byte_array, size=args.size, no_optimizations=args.no_optimizations, data_filepath=args.data_filepath)
+        write_bytearray_to_disk(sweetspot_byte_array, size=args.size, data_filepath=args.data_filepath)
 
     logging.info('done %r', args.operation)
 
