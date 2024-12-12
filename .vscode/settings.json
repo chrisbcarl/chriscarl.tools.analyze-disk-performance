@@ -1,0 +1,41 @@
+{
+    // vscode editor
+    "task.allowAutomaticTasks": "on",
+    "editor.wordWrap": "off",
+    "search.exclude": {
+        "**/*py*cache*": true,  // covers ./.pytest_cache and __pycache__
+        "**/*.venv*": true,
+    },
+    "files.exclude": {
+        "**/*py*cache*": true,  // covers ./.pytest_cache and __pycache__
+        "**/*.venv*": true,
+    },
+    // extensions //
+    // mypy extension
+    "mypy-type-checker.args": [
+        // "--ignore-missing-imports",
+        "--follow-imports=silent"
+    ],
+    // trailing spaces
+    "trailing-spaces.trimOnSave": true,
+    // run on save extension
+    "emeraldwalk.runonsave": {
+        // "commands": [
+        //     {
+        //         "match": "\\.(py)$",
+        //         "cmd": "echo stubgen ${relativeFile} -o dist/typing && ${workspaceFolder}/.venv/scripts/stubgen ${relativeFile} -o dist/typing"
+        //     },
+        // ],
+    },
+    // vscode language
+    "[python]": {
+        "editor.defaultFormatter": "eeyore.yapf",
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
+        "editor.formatOnType": false,
+    },
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\scripts\\python.exe",
+    // stubgen src\chriscarl -o dist/typing
+    "python.analysis.stubPath": "${workspaceFolder}\\dist\\typing",
+    "python.analysis.extraPaths": ["${workspaceFolder}\\src"],
+}
