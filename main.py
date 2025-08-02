@@ -737,14 +737,23 @@ def main():
             stdout = f'{drive_letter}:/{drive_number}-perf+fill.stdout'
             stderr = f'{drive_letter}:/{drive_number}-perf+fill.stderr'
 
+            dirpath = os.path.dirname(args.perf_filepath)
+            for basename in [data_filepath, perf_filepath, stdout, stderr]:
+                destination = os.path.join(dirpath, basename)
+                if os.path.isfile(destination):
+                    os.remove(destination)
+
             os.remove(data_filepath)
-            shutil.move(perf_filepath, os.path.dirname(args.perf_filepath))
-            shutil.move(stdout, os.path.dirname(args.perf_filepath))
-            shutil.move(stderr, os.path.dirname(args.perf_filepath))
+            shutil.move(perf_filepath, dirpath)
+            shutil.move(stdout, dirpath)
+            shutil.move(stderr, dirpath)
 
         logging.debug('removing partitions...')
         delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
-        cmd = ['powershell', delete_partitions_ps1, '-Offline', '-DriveLetters', ','.join(drive_number_to_letter_dict.values())]
+        cmd = [
+            'powershell', delete_partitions_ps1, '-Offline', '-DriveLetters',
+            ','.join(drive_number_to_letter_dict.values())
+        ]
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
         logging.debug(output)
