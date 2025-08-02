@@ -1,0 +1,26 @@
+{
+    "2":  {
+              "SerialNumber":  "4C530000030316100315",
+              "Number":  2,
+              "Path":  "\\\\?\\usbstor#disk\u0026ven_sandisk\u0026prod_cruzer_spark\u0026rev_1.00#4c530000030316100315\u00260#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}",
+              "Model":  "Cruzer Spark",
+              "Location":  "Integrated : Adapter 0 : Port 0",
+              "Size":  31.406948352
+          },
+    "1":  {
+              "SerialNumber":  "0100_0000_0100_0000_0000_0000_0000_0000.",
+              "Number":  1,
+              "Path":  "\\\\?\\scsi#disk\u0026ven_nvme\u0026prod_intel_ssdpe2nv07#7\u0026f40850a\u00260\u0026000000#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}",
+              "Model":  "INTEL SSDPE2NV076T8",
+              "Location":  "PCI Slot 4 : Adapter 2",
+              "Size":  7681.501126656
+          },
+    "0":  {
+              "SerialNumber":  "BTTV2295047P400HGN",
+              "Number":  0,
+              "Path":  "\\\\?\\scsi#disk\u0026ven_intel\u0026prod_ssdsc2ba400g#4\u0026240534ba\u00260\u0026010000#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}",
+              "Model":  "INTEL SSDSC2BA400G",
+              "Location":  "Integrated : Adapter 1 : Port 1",
+              "Size":  400.088457216
+          }
+}
