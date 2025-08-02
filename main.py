@@ -42,7 +42,7 @@ Examples:
     1. Find performance sweetspot and fill the disk at partition D:/
         python main.py perf+fill --data-filepath D:/temp
     2. Evaluate overall health on all newly inserted disks
-        python main.py health --ignore-partitions
+        python main.py health --ignore-partitions C --log-level DEBUG
 '''
 # stdlib
 from __future__ import print_function, division
@@ -83,6 +83,7 @@ DURATION = 2
 ITERATIONS = 5
 SIZE = 1
 CRYSTALDISKINFO_EXE = 'DiskInfo64.exe' if sys.platform == 'win32' else 'DiskInfo64'
+CRYSTALDISKINFO_TXT = ''
 PERIOD = 15
 
 
@@ -282,7 +283,7 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
         rows.append(row)
     df = pd.DataFrame(rows)
     logging.debug('\n%s', df)
-    df.to_csv(perf_filepath)
+    df.to_csv(perf_filepath, index=False)
     logging.info('%s kb - %0.3f mb/s - sweetspot', sweetspot_killobytes, sweetspot_rate)
     return sweetspot_bytearray
 
@@ -338,14 +339,27 @@ def generate_and_write_bytearray(size, fill=FILL, no_optimizations=False, data_f
 
 def crystaldiskinfo():
     # type: () -> Dict[str, dict]
-    # TODO: dynamic crystaldiskinfo txt
-    # CRYSTALDISKINFO_TXT = os.path.join(os.path.dirname(CRYSTALDISKINFO_EXE), 'DiskInfo.txt')
-    CRYSTALDISKINFO_TXT = r'C:\ProgramData\chocolatey\lib\crystaldiskinfo.portable\tools\DiskInfo.txt'
+    global CRYSTALDISKINFO_TXT
 
     # run crystaldiskinfo, get a text document (each time converting into telemetry data
     cmd = [CRYSTALDISKINFO_EXE, '/CopyExit']
-    logging.debug(subprocess.list2cmdline(cmd))
+    # logging.debug(subprocess.list2cmdline(cmd))
     _ = subprocess.check_call(cmd, universal_newlines=True)
+
+    # TODO: dynamic crystaldiskinfo txt
+    if CRYSTALDISKINFO_TXT == '':
+        candidates = [
+            os.path.join(os.path.dirname(CRYSTALDISKINFO_EXE), 'DiskInfo.txt'),
+            r'C:\ProgramData\chocolatey\lib\crystaldiskinfo.portable\tools\DiskInfo.txt',
+            os.path.expanduser(r'~\Desktop\crystaldiskinfo.portable\tools'),
+            r'C:\Program Files\CrystalDiskInfo\DiskInfo.txt',
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                CRYSTALDISKINFO_TXT = candidate
+                break
+        if not os.path.isfile(CRYSTALDISKINFO_TXT):
+            raise OSError('Could not find DiskInfo.txt! I looked everywhere!')
     with open(CRYSTALDISKINFO_TXT, 'r', encoding='utf-8') as r:
         content = r.read().splitlines()
 
@@ -363,7 +377,7 @@ def crystaldiskinfo():
                         break
                     crystal_disk_list.append(line)
 
-                logging.debug('crystal_disk_list: %s', json.dumps(crystal_disk_list, indent=2))
+                # logging.debug('crystal_disk_list: %s', json.dumps(crystal_disk_list, indent=2))
                 for line in crystal_disk_list:
                     line = line.rstrip()
                     if not line:
@@ -371,15 +385,25 @@ def crystaldiskinfo():
                     key = line.split(' : ')[0]
                     disk_number = re.findall(r'[X\d]/\d/\d', line)[0][0]  # 5/4/0 means disk 5
                     crystal_disks[key] = disk_number
-                logging.debug('crystal_disks: %s', json.dumps(crystal_disks, indent=2))
+                # logging.debug('crystal_disks: %s', json.dumps(crystal_disks, indent=2))
             elif 'S.M.A.R.T.' in line:
+                # -- S.M.A.R.T. --------------------------------------------------------------
+                # ID Cur Wor Thr RawValues(6) Attribute Name
+                # 05 100 100 __0 000000000000 Re-Allocated Sector Count
+                # 09 100 100 __0 0000000000D4 Power-On Hours Count
+                # 0C 100 100 __0 0000000000D2 Power Cycle Count
+                # ID RawValues(6) Attribute Name
+                # 01 000000000000 Critical Warning
                 line = content.pop(0)  # get rid of next line "ID RawValues(6) Attribute Name"
                 line = content.pop(0)  # 01 000000000000 Critical Warning
                 while line:
                     if not line:
                         break
                     try:
-                        mo = re.match(r'(?P<ID>[A-F0-9]{2,}) (?P<RawValues>[A-F0-9]{12,}) (?P<AttributeName>.+)', line)
+                        mo = re.match(
+                            r'(?P<ID>[A-F0-9]{2,})(?P<whocares>[ _0-9]+)? (?P<RawValues>[A-F0-9]{12,}) (?P<AttributeName>.+)',
+                            line
+                        )
                         dick = mo.groupdict()
                     except Exception:
                         print(repr(line))
@@ -409,8 +433,8 @@ def crystaldiskinfo():
 
         line = content.pop(0)
 
-    logging.debug('disks: %s', json.dumps(crystal_disks, indent=2))
-    logging.debug('data: %s', json.dumps(crystal_data, indent=2))
+    # logging.debug('disks: %s', json.dumps(crystal_disks, indent=2))
+    # logging.debug('data: %s', json.dumps(crystal_data, indent=2))
     return crystal_data
 
 
@@ -606,22 +630,24 @@ def main():
         logging.debug('will operate on drive numbers: %s', disk_numbers)
         logging.info('found disks and old partitions!')
 
-        logging.debug('remove partitions so they return to raw')
-        delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
-        cmd = ['powershell', delete_partitions_ps1, '-DriveLetters'] + drive_letters_to_remove
-        logging.debug(subprocess.list2cmdline(cmd))
-        # TODO: add back
-        # output = subprocess.check_output(cmd, universal_newlines=True)
-        logging.info('removed unwanted partitions!')
+        if drive_letters_to_remove:
+            logging.debug('remove partitions so they return to raw')
+            delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
+            cmd = ['powershell', delete_partitions_ps1, '-DriveLetters'] + drive_letters_to_remove
+            logging.debug(subprocess.list2cmdline(cmd))
+            output = subprocess.check_output(cmd, universal_newlines=True)
+            logging.debug(output)
+            logging.info('removed unwanted partitions!')
 
         logging.debug('make new partitions')
-        read_partitions = json.loads(output)
         create_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\create-partitions.ps1")
         cmd = ['powershell', create_partitions_ps1, '-DriveLetters'] + drive_letters_to_remove
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
-        sentinel = "Begin Output Parsing Here:"
-        output = output[output.find(sentinel) + len(sentinel) + 1:].strip()
+        create_partitions_sentinel = "Begin Output Parsing Here:"
+        logging.debug(output)
+        output = output[output.find(create_partitions_sentinel) + len(create_partitions_sentinel) + 1:].strip()
+        logging.debug(output)
         drive_number_to_letter_dict = json.loads(output)
         logging.debug('will operate on drive numbers and letters: %s', drive_number_to_letter_dict)
         logging.info('created new partitions!')
@@ -637,13 +663,15 @@ def main():
 
         logging.debug('reading crystaldiskinfo')
         crystal_data = crystaldiskinfo()
+        keys = list(list(crystal_data.values())[0])
         if not os.path.isfile(args.perf_filepath):
             with open(args.perf_filepath, 'w', encoding='utf-8', newline='') as w:
-                writer = csv.DictWriter(w, fieldnames=list(crystal_data))
+                writer = csv.DictWriter(w, fieldnames=keys)
                 writer.writeheader()
         with open(args.perf_filepath, 'a', encoding='utf-8', newline='') as a:
-            writer = csv.DictWriter(a, fieldnames=list(crystal_data))
-            writer.writerow(crystal_data)
+            writer = csv.DictWriter(a, fieldnames=keys)
+            for value in crystal_data.values():
+                writer.writerow(value)
         logging.info('read crystaldiskinfo!')
 
         logging.debug('starting perf+fill')
@@ -663,13 +691,14 @@ def main():
                 '--perf-filepath',
                 perf_filepath,
                 '--fill',
-                args.fill,
+                str(args.fill),
                 '--log-level',
                 args.log_level,
             ]
             logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd))
-            # popen = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
-            # popens.append(popen)
+            with open(stdout, 'wb') as sout, open(stderr, 'wb') as serr:
+                popen = subprocess.Popen(cmd, stdout=sout, stderr=serr)
+                popens.append(popen)
 
         logging.info('launching multi perf+fill on %d partitions/drives...', len(drive_number_to_letter_dict))
         try:
@@ -677,9 +706,11 @@ def main():
                 now = datetime.datetime.now()
                 logging.info('elapsed: %s', now - started)
                 crystal_data = crystaldiskinfo()
+                keys = list(list(crystal_data.values())[0])
                 with open(args.perf_filepath, 'a', encoding='utf-8', newline='') as a:
-                    writer = csv.DictWriter(a, fieldnames=list(crystal_data))
-                    writer.writerow(crystal_data)
+                    writer = csv.DictWriter(a, fieldnames=keys)
+                    for value in crystal_data.values():
+                        writer.writerow(value)
                 if all([popen.poll() is not None for popen in popens]):
                     logging.info('All perf+ fill finished!')
                     break
@@ -690,7 +721,8 @@ def main():
         logging.info('closing resources...')
         for popen in popens:
             if popen.poll() is None:
-                popen.kill(timeout=5)
+                popen.kill()
+                subprocess.Popen(['taskkill', '/pid', str(popen.pid), '/f', '/t'], shell=True).wait()
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
             data_filepath = f'{drive_letter}:/{drive_number}-perf+fill.dat'
             perf_filepath = f'{drive_letter}:/{drive_number}-perf+fill.csv'
@@ -711,6 +743,7 @@ def main():
         logging.debug(output)
         logging.info('removed all used partitions!')
 
+    logging.info('perf-filepath: "%s"', args.perf_filepath)
     logging.info('done %r', args.operation)
 
 
