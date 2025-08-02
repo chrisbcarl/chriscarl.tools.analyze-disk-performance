@@ -438,6 +438,15 @@ def crystaldiskinfo():
     return crystal_data
 
 
+def get_keys_from_dicts(*dicts):
+    keys = []
+    for dick in dicts:
+        for key in dick.keys():
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
 def main():
     global CRYSTALDISKINFO_EXE
     parser = argparse.ArgumentParser(prog='fill-the-drive', description=__doc__, formatter_class=NiceFormatter)
@@ -633,7 +642,7 @@ def main():
         if drive_letters_to_remove:
             logging.debug('remove partitions so they return to raw')
             delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
-            cmd = ['powershell', delete_partitions_ps1, '-DriveLetters'] + drive_letters_to_remove
+            cmd = ['powershell', delete_partitions_ps1, '-DriveLetters', ','.join(drive_letters_to_remove)]
             logging.debug(subprocess.list2cmdline(cmd))
             output = subprocess.check_output(cmd, universal_newlines=True)
             logging.debug(output)
@@ -641,7 +650,7 @@ def main():
 
         logging.debug('make new partitions')
         create_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\create-partitions.ps1")
-        cmd = ['powershell', create_partitions_ps1, '-DriveLetters'] + drive_letters_to_remove
+        cmd = ['powershell', create_partitions_ps1, '-DriveLetters', ','.join(drive_letters_to_remove)]
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
         create_partitions_sentinel = "Begin Output Parsing Here:"
@@ -663,13 +672,13 @@ def main():
 
         logging.debug('reading crystaldiskinfo')
         crystal_data = crystaldiskinfo()
-        keys = list(list(crystal_data.values())[0])
+        crystaldisk_keys = get_keys_from_dicts(*list(crystal_data.values()))
         if not os.path.isfile(args.perf_filepath):
             with open(args.perf_filepath, 'w', encoding='utf-8', newline='') as w:
-                writer = csv.DictWriter(w, fieldnames=keys)
+                writer = csv.DictWriter(w, fieldnames=crystaldisk_keys)
                 writer.writeheader()
         with open(args.perf_filepath, 'a', encoding='utf-8', newline='') as a:
-            writer = csv.DictWriter(a, fieldnames=keys)
+            writer = csv.DictWriter(a, fieldnames=crystaldisk_keys)
             for value in crystal_data.values():
                 writer.writerow(value)
         logging.info('read crystaldiskinfo!')
@@ -706,9 +715,8 @@ def main():
                 now = datetime.datetime.now()
                 logging.info('elapsed: %s', now - started)
                 crystal_data = crystaldiskinfo()
-                keys = list(list(crystal_data.values())[0])
                 with open(args.perf_filepath, 'a', encoding='utf-8', newline='') as a:
-                    writer = csv.DictWriter(a, fieldnames=keys)
+                    writer = csv.DictWriter(a, fieldnames=crystaldisk_keys)
                     for value in crystal_data.values():
                         writer.writerow(value)
                 if all([popen.poll() is not None for popen in popens]):
@@ -736,8 +744,7 @@ def main():
 
         logging.debug('removing partitions...')
         delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
-        cmd = ['powershell', delete_partitions_ps1, '-Offline', '-DriveLetters'
-               ] + list(drive_number_to_letter_dict.values())
+        cmd = ['powershell', delete_partitions_ps1, '-Offline', '-DriveLetters', ','.join(drive_number_to_letter_dict.values())]
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
         logging.debug(output)
