@@ -45,6 +45,10 @@ Examples:
         python main.py perf+fill --data-filepath D:/temp
     2. Evaluate overall health on all newly inserted disks
         python main.py health --ignore-partitions C --log-level DEBUG
+    3. What most people think of as write-read
+        python main.py perf+fill+read --data-filepath Y:/temp
+    4. Just launch a cyrstaldiskinfo monitor
+        python main.py smartmon
 '''
 # stdlib
 from __future__ import print_function, division
@@ -289,28 +293,35 @@ def main():
     )
 
     op6 = operations.add_parser(
-        'health',
-        help='evaluate all disks for their health and track the movements',
-        description=generate_and_write_bytearray.__doc__,
-        formatter_class=NiceFormatter,
-    )
-    op6.set_defaults(operation='health')
-    group = op6.add_argument_group('operation specific')
-    group.add_argument(
-        '--ignore-partitions', type=str, nargs='*', default=['C', 'D', 'E'], help='if known partitions, ignore these'
-    )
-    group.add_argument('--period', type=float, default=PERIOD, help='telemetry poll period')
-
-    op7 = operations.add_parser(
         'perf+fill+read',
         help='fill disk, readback',
         description=perf_fill_read.__doc__,
         formatter_class=NiceFormatter,
     )
-    op7.set_defaults(operation='perf+fill+read')
-    group = op7.add_argument_group('operation specific')
+    op6.set_defaults(operation='perf+fill+read')
+    group = op6.add_argument_group('operation specific')
     group.add_argument('--loops', type=int, default=-1, help='default infinitely')
     group.add_argument('--duration', type=int, default=-1, help='default infinitely, measured in seconds')
+
+    op7 = operations.add_parser(
+        'health',
+        help='evaluate all disks for their health and track the movements',
+        description=generate_and_write_bytearray.__doc__,
+        formatter_class=NiceFormatter,
+    )
+    op7.set_defaults(operation='health')
+    group = op7.add_argument_group('operation specific')
+    group.add_argument(
+        '--ignore-partitions', type=str, nargs='*', default=['C', 'D', 'E'], help='if known partitions, ignore these'
+    )
+    group.add_argument('--period', type=float, default=PERIOD, help='telemetry poll period')
+    group.add_argument('--loops', type=int, default=3, help='default 3 loops, passed on to per-disk perf+fill+read')
+    group.add_argument(
+        '--duration',
+        type=int,
+        default=-1,
+        help='default infinitely, measured in seconds, passed on to per-disk perf+fill+read'
+    )
 
     op8 = operations.add_parser(
         'smartmon',
@@ -515,7 +526,7 @@ def main():
             cmd = [
                 sys.executable,
                 os.path.abspath(__file__),
-                'perf+fill',
+                'perf+fill+read',
                 '--data-filepath',
                 data_filepath,
                 '--perf-filepath',
@@ -524,6 +535,10 @@ def main():
                 str(args.value),
                 '--log-level',
                 args.log_level,
+                '--loops',
+                args.loops,
+                '--duration',
+                args.duration,
             ]
             logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd))
             with open(stdout, 'wb') as sout, open(stderr, 'wb') as serr:
