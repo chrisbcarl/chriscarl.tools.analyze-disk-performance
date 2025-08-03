@@ -76,17 +76,18 @@ TEMP_DIRPATH = os.path.abspath(TEMP_DIRPATH)
 DRIVE, _ = os.path.splitdrive(TEMP_DIRPATH)
 DATA_FILEPATH = os.path.join(TEMP_DIRPATH, 'data.dat')
 PERF_FILEPATH = os.path.join(TEMP_DIRPATH, 'perf.csv')
-OPERATIONS = ['perf', 'fill', 'perf+fill', 'loop', 'write', 'perf+write', 'health']
+OPERATIONS = ['perf', 'fill', 'perf+fill', 'loop', 'write', 'perf+write', 'health', 'perf+fill+read', 'smartmon']
 CPU_COUNT = multiprocessing.cpu_count()
 LOG_LEVELS = list(logging._nameToLevel)  # pylint: disable=(protected-access)
 LOG_LEVEL = 'INFO'
-FILL = -1
+VALUE = -1
 DURATION = 2
 ITERATIONS = 5
 SIZE = 1
 CRYSTALDISKINFO_EXE = 'DiskInfo64.exe' if sys.platform == 'win32' else 'DiskInfo64'
 CRYSTALDISKINFO_TXT = ''
 PERIOD = 15
+LOOPS = -1
 
 
 class NiceFormatter(
@@ -95,23 +96,23 @@ class NiceFormatter(
     pass
 
 
-def create_bytearray(count, fill=FILL):
-    if fill == FILL:
+def create_bytearray(count, value=VALUE):
+    if value == VALUE:
         new = bytearray(random.randint(0, 255) for _ in range(count))
     else:
-        new = bytearray(fill for _ in range(count))
+        new = bytearray(value for _ in range(count))
     return new
 
 
-def create_bytearray_killobytes(count, fill=FILL):
+def create_bytearray_killobytes(count, value=VALUE):
     '''
     Description:
         create a bytearray by repeating only 1kb until the requested count
         the motivation is i've found generating 1MB takes about .15s,
             but generating 10MB takes 20s, so its not growing linearly.
     '''
-    logging.debug('%s, fill=%s', count, fill)
-    killobyte = create_bytearray(1024, fill=fill)
+    logging.debug('%s, value=%s', count, value)
+    killobyte = create_bytearray(1024, value=value)
     killobytes_array = bytearray()
     for _ in range(count):
         killobytes_array.extend(copy.deepcopy(killobyte))
@@ -133,7 +134,7 @@ def disk_usage_monitor(event, drive=DRIVE):
 def validate_kwargs(
     operation=OPERATIONS[0],
     log_level='INFO',
-    fill=FILL,
+    value=VALUE,
     size=SIZE,
     duration=DURATION,
     iterations=ITERATIONS,
@@ -142,18 +143,19 @@ def validate_kwargs(
     perf_filepath=PERF_FILEPATH,
     ignore_partitions=None,
     period=PERIOD,
+    loops=LOOPS,
 ):
     if operation not in OPERATIONS:
         raise KeyError(f'operation {operation!r} does not exist, use one of {OPERATIONS}!')
     if log_level not in LOG_LEVELS:
         raise KeyError(f'log_level {log_level!r} does not exist!')
-    if fill != -1:
-        if fill < 0 and 255 < fill:
-            raise ValueError('fill must be a value between [0,255] or -1')
+    if value != -1:
+        if value < 0 and 255 < value:
+            raise ValueError('value must be a value between [0,255] or -1')
     if size < 1:
         raise ValueError('duration must be a postive int, are you nuts?')
-    if duration < 0:
-        raise ValueError('duration must be a postive num, are you nuts?')
+    if duration < 0 and duration != -1:
+        raise ValueError('duration must be a postive num (or -1), are you nuts?')
     if iterations < 0:
         raise ValueError('iterations must be a postive int, are you nuts?')
     if not isinstance(no_optimizations, bool):
@@ -166,7 +168,9 @@ def validate_kwargs(
             if ignore_partition not in string.ascii_uppercase:
                 raise ValueError(f'ignore_partition {ignore_partition!r} not in expected possibilities!')
     if period < 0:
-        raise ValueError('must be positive!')
+        raise ValueError('period must be positive!')
+    if loops < 0 and loops != -1:
+        raise ValueError('loops must be positive!')
 
 
 def write_byte_array_continuously(byte_array, data_filepath=DATA_FILEPATH, duration=DURATION, iterations=ITERATIONS):
@@ -210,7 +214,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH):
     '''
     Description:
         given a bytearray, write it to the disk in an appending fashion,
-            and when you inevitably overshoot, fill in 1mb increments
+            and when you inevitably overshoot, value in 1mb increments
     Arguments:
     Returns:
     '''
@@ -246,7 +250,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH):
     logging.debug('disk usage: %s%%', du.percent)
 
 
-def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath=PERF_FILEPATH, fill=FILL):
+def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath=PERF_FILEPATH, value=VALUE):
     # type: (str, str, int) -> bytearray
     '''
     Description:
@@ -258,8 +262,8 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
     Returns:
         bytearray
     '''
-    validate_kwargs(fill=fill, data_filepath=data_filepath, perf_filepath=perf_filepath)
-    logging.info('data_filepath="%s", perf_filepath="%s", fill=%s', data_filepath, perf_filepath, fill)
+    validate_kwargs(value=value, data_filepath=data_filepath, perf_filepath=perf_filepath)
+    logging.info('data_filepath="%s", perf_filepath="%s", value=%s', data_filepath, perf_filepath, value)
     rows = []
     sweetspot_bytearray = bytearray()
     sweetspot_killobytes = 0
@@ -269,7 +273,7 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
     killobytes_list.extend([ele * 2 for ele in killobytes_list] + [ele * 3 for ele in killobytes_list])
     for killobytes in sorted(killobytes_list):
         megabytes = killobytes / 1024
-        byte_array = create_bytearray_killobytes(killobytes, fill=fill)
+        byte_array = create_bytearray_killobytes(killobytes, value=value)
         bytes_written_bytes, elapsed, iteration = write_byte_array_continuously(byte_array, data_filepath)
         bytes_written_mb = bytes_written_bytes / 1024**2
         rate = bytes_written_mb / elapsed
@@ -290,8 +294,8 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
     return sweetspot_bytearray
 
 
-def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH):
-    # type: (bytearray, int, str) -> None
+def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, randomness=True):
+    # type: (bytearray, int, str, bool) -> None
     '''
     Description:
         cleverly write a byte_array to the disk,
@@ -306,9 +310,12 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH):
         for i in range(iterations):
             # basically "fake" randomness even further by starting at different points within the already created one.
             # if fill is provided, they're all constants anyway
-            midpoint = random.randint(0, len(byte_array) - 1)
-            wb.write(byte_array[midpoint:])
-            wb.write(byte_array[0:midpoint])
+            if randomness:
+                midpoint = random.randint(0, len(byte_array) - 1)
+                wb.write(byte_array[midpoint:])
+                wb.write(byte_array[0:midpoint])
+            else:
+                wb.write(byte_array)
             logging.debug(
                 '%0.3f%% or %0.3f MB written', (i + 1) / (iterations + 1) * 100,
                 os.path.getsize(data_filepath) / 1024**2
@@ -321,22 +328,85 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH):
         )
 
 
-def generate_and_write_bytearray(size, fill=FILL, no_optimizations=False, data_filepath=DATA_FILEPATH):
+def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
+    iterations = os.path.getsize(data_filepath) // len(byte_array) + 1
+    with open(data_filepath, 'rb') as rb:
+        i = 0
+        read_array = rb.read(len(byte_array))
+        while read_array:
+            if len(read_array) == len(byte_array):
+                assert read_array == byte_array, (
+                    f'on iteration {i}, full array read != write!\n'
+                    f'Expected {byte_array}\n'
+                    f'Read {read_array}'
+                )
+            else:
+                assert read_array == byte_array[:len(read_array)], (
+                    f'on iteration {i}, sub array read != write!\n'
+                    f'Expected {byte_array}\n'
+                    f'Read {read_array}'
+                )
+            logging.debug('%0.3f%% or %0.3f MB read', (i + 1) / (iterations) * 100, len(byte_array) * (i + 1) / 1024**2)
+
+            read_array = rb.read(len(byte_array))
+            i += 1
+
+
+def generate_and_write_bytearray(size, value=VALUE, no_optimizations=False, data_filepath=DATA_FILEPATH):
     # type: (int, int, bool, str) -> None
     '''
     Description:
         basically just create a file of a certain size.
         TODO: be wary of too large sizes on no_optimizations
     '''
-    logging.info('%s, fill=%s, no_optimizations=%s, data_filepath="%s"', size, fill, no_optimizations, data_filepath)
+    logging.info('%s, value=%s, no_optimizations=%s, data_filepath="%s"', size, value, no_optimizations, data_filepath)
     if no_optimizations:
-        byte_array = create_bytearray(size, fill=fill)
+        byte_array = create_bytearray(size, value=value)
     else:
         if size < 1024**2:
-            byte_array = create_bytearray(size, fill=fill)
+            byte_array = create_bytearray(size, value=value)
         else:
-            byte_array = create_bytearray(1024**2, fill=fill)  # 1mb is pretty performant no matter what
+            byte_array = create_bytearray(1024**2, value=value)  # 1mb is pretty performant no matter what
     write_bytearray_to_disk(byte_array, size=size, data_filepath=DATA_FILEPATH)
+
+
+def perf_fill_read(data_filepath=DATA_FILEPATH, perf_filepath=PERF_FILEPATH, value=VALUE, loops=-1, duration=-1):
+    sweetspot_byte_array = create_byte_array_high_throughput(
+        data_filepath=data_filepath, perf_filepath=perf_filepath, value=value
+    )
+    if loops > -1:
+        for iteration in range(1, loops + 1):
+            logging.info('fill+read iteration %d / %d', iteration + 1, loops)
+            write_byte_array_contiguously(sweetspot_byte_array, data_filepath=data_filepath)
+            read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
+    elif duration > -1:
+        start = time.time()
+        elapsed = time.time() - start
+        iteration = 1
+        while elapsed < duration:
+            logging.info('fill+read iteration %d until %s > %s', iteration, elapsed, duration)
+            write_byte_array_contiguously(sweetspot_byte_array, data_filepath=data_filepath)
+            if elapsed > duration:
+                logging.info('time exceeded after write')
+                break
+            read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
+            if elapsed > duration:
+                logging.info('time exceeded after read')
+                break
+
+            iteration += 1
+            elapsed = time.time() - start
+    else:
+        iteration = 1
+        while True:
+            try:
+                logging.info('fill+read iteration %d infinitely', iteration)
+                write_byte_array_contiguously(sweetspot_byte_array, data_filepath=data_filepath)
+                read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
+
+                iteration += 1
+            except KeyboardInterrupt:
+                break
 
 
 def crystaldiskinfo():
@@ -424,11 +494,11 @@ def crystaldiskinfo():
                 if not line:
                     break
                 try:
-                    key, value = line.split(' :')
+                    key, val = line.split(' :')
                 except Exception:
                     print(repr(line))
                     raise
-                crystal_disk[key.strip()] = value.strip()
+                crystal_disk[key.strip()] = val.strip()
                 line = content.pop(0)
 
             crystal_data[disk_number] = crystal_disk
@@ -548,7 +618,28 @@ def main():
     )
     group.add_argument('--period', type=float, default=PERIOD, help='telemetry poll period')
 
-    for op in [op0, op1, op2, op3, op4, op5, op6]:
+    op7 = operations.add_parser(
+        'perf+fill+read',
+        help='fill disk, readback',
+        description=perf_fill_read.__doc__,
+        formatter_class=NiceFormatter,
+    )
+    op7.set_defaults(operation='perf+fill+read')
+    group = op7.add_argument_group('operation specific')
+    group.add_argument('--loops', type=int, default=-1, help='default infinitely')
+    group.add_argument('--duration', type=int, default=-1, help='default infinitely, measured in seconds')
+
+    op8 = operations.add_parser(
+        'smartmon',
+        help='repeatedly run crystaldiskinfo',
+        description='TODO: plz',  # TODO: plz
+        formatter_class=NiceFormatter,
+    )
+    op8.set_defaults(operation='smartmon')
+    group = op8.add_argument_group('operation specific')
+    group.add_argument('--period', type=float, default=PERIOD, help='telemetry poll period')
+
+    for op in [op0, op1, op2, op3, op4, op5, op6, op7, op8]:
         group = op.add_argument_group('general')
         group.add_argument(
             '--data-filepath', type=str, default=DATA_FILEPATH, help='where to dump the file that fills the disk.'
@@ -557,29 +648,31 @@ def main():
             '--perf-filepath', type=str, default=PERF_FILEPATH, help='where to dump the csv with performance data.'
         )
         group.add_argument(
-            '--fill', type=int, default=FILL, help='fill bytearray with a constant byte value, default means random.'
+            '--value', type=int, default=VALUE, help='fill bytearray with a constant byte value, default means random.'
         )
         group.add_argument('--log-level', type=str, default=LOG_LEVEL, choices=LOG_LEVELS, help='log level')
 
     args = parser.parse_args()
     validate_kwargs(**vars(args))
 
-    logging.basicConfig(format='%(asctime)s - %(levelname)10s - %(funcName)48s - %(message)s', level=args.log_level)
+    logging.basicConfig(
+        format='%(asctime)s - %(levelname)10s - %(funcName)48s - %(message)s', level=args.log_level, stream=sys.stdout
+    )
     logging.info('starting %r', args.operation)
 
     if args.operation == 'perf':
         create_byte_array_high_throughput(
-            fill=args.fill, data_filepath=args.data_filepath, perf_filepath=args.perf_filepath
+            value=args.value, data_filepath=args.data_filepath, perf_filepath=args.perf_filepath
         )
 
     elif args.operation == 'perf+fill':
         sweetspot_byte_array = create_byte_array_high_throughput(
-            data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, fill=args.fill
+            data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, value=args.value
         )
         write_byte_array_contiguously(sweetspot_byte_array, data_filepath=args.data_filepath)
 
     elif args.operation in ['fill', 'loop']:
-        byte_array = create_bytearray_killobytes(args.size, fill=args.fill)
+        byte_array = create_bytearray_killobytes(args.size, value=args.value)
         if args.operation == 'fill':
             write_byte_array_contiguously(byte_array, data_filepath=args.data_filepath)
         elif args.operation == 'loop':
@@ -589,14 +682,55 @@ def main():
 
     elif args.operation == 'write':
         generate_and_write_bytearray(
-            args.size, fill=args.fill, no_optimizations=args.no_optimizations, data_filepath=args.data_filepath
+            args.size, value=args.value, no_optimizations=args.no_optimizations, data_filepath=args.data_filepath
         )
 
     elif args.operation == 'perf+write':
         sweetspot_byte_array = create_byte_array_high_throughput(
-            data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, fill=args.fill
+            data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, value=args.value
         )
         write_bytearray_to_disk(sweetspot_byte_array, size=args.size, data_filepath=args.data_filepath)
+
+    elif args.operation == 'perf+fill+read':
+        perf_fill_read(
+            data_filepath=args.data_filepath,
+            perf_filepath=args.perf_filepath,
+            value=args.value,
+            loops=args.loops,
+            duration=args.duration
+        )
+
+    elif args.operation == 'smartmon':
+        logging.debug('reading crystaldiskinfo')
+        crystal_data = crystaldiskinfo()
+        crystaldisk_keys = get_keys_from_dicts(*list(crystal_data.values()))
+        if not os.path.isfile(args.perf_filepath):
+            with open(args.perf_filepath, 'w', encoding='utf-8', newline='') as w:
+                writer = csv.DictWriter(w, fieldnames=crystaldisk_keys)
+                writer.writeheader()
+                for value in crystal_data.values():
+                    writer.writerow(value)
+        else:
+            # combine old and new keys
+            old_df = pd.from_csv(args.perf_filepath)
+            new_df = pd.DataFrame(crystal_data.values())
+            df = pd.concat([old_df, new_df])
+            df.to_csv(index=False)
+            crystaldisk_keys = df.columns.tolist()
+
+        try:
+            started = datetime.datetime.now()
+            while True:
+                now = datetime.datetime.now()
+                logging.info('elapsed: %s', now - started)
+                crystal_data = crystaldiskinfo()
+                with open(args.perf_filepath, 'a', encoding='utf-8', newline='') as a:
+                    writer = csv.DictWriter(a, fieldnames=crystaldisk_keys)
+                    for value in crystal_data.values():
+                        writer.writerow(value)
+                time.sleep(args.period)
+        except KeyboardInterrupt:
+            logging.warning('ctrl + c detected! killing processes, removing resources...')
 
     elif args.operation == 'health':
         try:
@@ -635,9 +769,7 @@ def main():
         logging.debug('filter out all partitions that dont belong')
         drive_letters_to_remove = [key for key in read_partitions if key not in args.ignore_partitions]
         logging.debug('removing drive letters: %s', drive_letters_to_remove)
-        disk_numbers = [
-            value['DiskNumber'] for key, value in read_partitions.items() if key not in args.ignore_partitions
-        ]
+        disk_numbers = [val['DiskNumber'] for key, val in read_partitions.items() if key not in args.ignore_partitions]
         logging.debug('will operate on drive numbers: %s', disk_numbers)
         logging.info('found disks and old partitions!')
 
@@ -701,8 +833,8 @@ def main():
                 data_filepath,
                 '--perf-filepath',
                 perf_filepath,
-                '--fill',
-                str(args.fill),
+                '--value',
+                str(args.value),
                 '--log-level',
                 args.log_level,
             ]
