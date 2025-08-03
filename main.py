@@ -23,6 +23,7 @@ Date:       2024-09-26
 Modified:   2024-09-26
 
 Modified:
+    2025-08-02 - chrisbcarl - added perf+fill+read and smartmon
     2025-08-01 - chrisbcarl - changed to chriscarl.tools.analyze-disk-performance
                               created the 'health' module which is designed to rip through all disks
                               added crystaldiskinfo utilization, we'll see how it goes after testing.
