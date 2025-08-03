@@ -62,9 +62,12 @@ def create_bytearray_killobytes(count, value=VALUE):
 
 def disk_usage_monitor(event, drive=DRIVE):
     # type: (threading.Event, str) -> None
+    prior_percent = None
     while not event.is_set():
         du = psutil.disk_usage(drive)
-        logging.info('disk usage: %s%%', du.percent)
+        if du.percent != prior_percent:
+            logging.info('disk usage: %s%%', du.percent)
+            prior_percent = du.percent
         for _ in range(100):
             time.sleep(1 / 100)
             if event.is_set():
