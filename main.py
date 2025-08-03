@@ -69,7 +69,9 @@ import pandas as pd
 import psutil
 
 SCRIPT_DIRPATH = os.path.abspath(os.path.dirname(__file__))
+NOW = datetime.datetime.now()
 TEMP_DIRPATH = '/temp' if sys.platform == 'win32' else '/tmp'
+TEMP_DIRPATH = os.path.join(TEMP_DIRPATH, NOW.strftime('%Y%m%d-%H%M'))  # %S
 TEMP_DIRPATH = os.path.abspath(TEMP_DIRPATH)
 DRIVE, _ = os.path.splitdrive(TEMP_DIRPATH)
 DATA_FILEPATH = os.path.join(TEMP_DIRPATH, 'data.dat')
@@ -158,7 +160,7 @@ def validate_kwargs(
         raise TypeError(f'no_optimizations must be of type bool, provided {type(no_optimizations)}')
     for filepath in [data_filepath, perf_filepath]:
         if not os.path.isdir(os.path.dirname(filepath)):
-            os.makedirs(os.path.dirname(filepath))
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
     if isinstance(ignore_partitions, list):
         for ignore_partition in ignore_partitions:
             if ignore_partition not in string.ascii_uppercase:
@@ -732,21 +734,28 @@ def main():
                 popen.kill()
                 subprocess.Popen(['taskkill', '/pid', str(popen.pid), '/f', '/t'], shell=True).wait()
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
-            data_filepath = f'{drive_letter}:/{drive_number}-perf+fill.dat'
-            perf_filepath = f'{drive_letter}:/{drive_number}-perf+fill.csv'
-            stdout = f'{drive_letter}:/{drive_number}-perf+fill.stdout'
-            stderr = f'{drive_letter}:/{drive_number}-perf+fill.stderr'
+            data_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.dat')
+            perf_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.csv')
+            stdout = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.stdout')
+            stderr = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.stderr')
 
             dirpath = os.path.dirname(args.perf_filepath)
-            for basename in [data_filepath, perf_filepath, stdout, stderr]:
-                destination = os.path.join(dirpath, basename)
+            for filepath in [data_filepath, perf_filepath, stdout, stderr]:
+                destination = os.path.join(dirpath, os.path.basename(filepath))
+                logging.info('output: "%s"', destination)
                 if os.path.isfile(destination):
-                    os.remove(destination)
+                    try:
+                        os.remove(destination)
+                    except Exception:
+                        logging.error('unable to delete ""%s', destination)
 
-            os.remove(data_filepath)
-            shutil.move(perf_filepath, dirpath)
-            shutil.move(stdout, dirpath)
-            shutil.move(stderr, dirpath)
+            try:
+                os.remove(data_filepath)
+            except Exception:
+                logging.error('unable to delete ""%s', data_filepath)
+            for src in [perf_filepath, stdout, stderr]:
+                if os.path.isfile(src):
+                    shutil.move(src, dirpath)
 
         logging.debug('removing partitions...')
         delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
@@ -764,5 +773,4 @@ def main():
 
 
 if __name__ == '__main__':
-
     main()
