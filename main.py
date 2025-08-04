@@ -24,6 +24,7 @@ Modified:   2024-09-26
 
 Modified:
     2025-08-03 - chrisbcarl - moved functions around, perfected the read_bytearray_from_disk
+                              cleaned up perf+fill+read minutia
     2025-08-02 - chrisbcarl - added perf+fill+read and smartmon
     2025-08-01 - chrisbcarl - changed to chriscarl.tools.analyze-disk-performance
                               created the 'health' module which is designed to rip through all disks
@@ -78,11 +79,11 @@ import psutil
 from constants import (
     DATA_FILEPATH,
     PERF_FILEPATH,
+    BYTE_ARRAY_THROUGHPUT_FILEPATH,
     VALUE,
     DURATION,
     ITERATIONS,
     CRYSTALDISKINFO_EXE,
-    CRYSTALDISKINFO_TXT,
 )
 from lib import (
     get_keys_from_dicts,
@@ -126,6 +127,7 @@ def validate_kwargs(
     no_optimizations=False,
     data_filepath=DATA_FILEPATH,
     perf_filepath=PERF_FILEPATH,
+    byte_array_throughput_filepath=BYTE_ARRAY_THROUGHPUT_FILEPATH,
     ignore_partitions=None,
     period=PERIOD,
     loops=LOOPS,
@@ -145,7 +147,7 @@ def validate_kwargs(
         raise ValueError('iterations must be a postive int, are you nuts?')
     if not isinstance(no_optimizations, bool):
         raise TypeError(f'no_optimizations must be of type bool, provided {type(no_optimizations)}')
-    for filepath in [data_filepath, perf_filepath]:
+    for filepath in [data_filepath, perf_filepath, byte_array_throughput_filepath]:
         if not os.path.isdir(os.path.dirname(filepath)):
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
     if isinstance(ignore_partitions, list):
@@ -158,14 +160,25 @@ def validate_kwargs(
         raise ValueError('loops must be positive!')
 
 
-def perf_fill_read(data_filepath=DATA_FILEPATH, perf_filepath=PERF_FILEPATH, value=VALUE, loops=-1, duration=-1):
+def perf_fill_read(
+    data_filepath=DATA_FILEPATH,
+    perf_filepath=PERF_FILEPATH,
+    byte_array_throughput_filepath=BYTE_ARRAY_THROUGHPUT_FILEPATH,
+    value=VALUE,
+    loops=-1,
+    duration=-1
+):
     sweetspot_byte_array = create_byte_array_high_throughput(
-        data_filepath=data_filepath, perf_filepath=perf_filepath, value=value
+        data_filepath=data_filepath, byte_array_throughput_filepath=byte_array_throughput_filepath, value=value
+    )
+    logging.info(
+        'data_filepath="%s", perf_filepath="%s", value=%s, loops=%s, duration=%s', data_filepath, perf_filepath, value,
+        loops, duration
     )
     if loops > -1:
         for iteration in range(1, loops + 1):
             try:
-                logging.info('fill+read iteration %d / %d', iteration + 1, loops)
+                logging.info('fill+read iteration %d / %d', iteration, loops)
                 write_byte_array_contiguously(sweetspot_byte_array, data_filepath=data_filepath)
                 read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
             except KeyboardInterrupt:
@@ -300,7 +313,7 @@ def main():
     )
     op6.set_defaults(operation='perf+fill+read')
     group = op6.add_argument_group('operation specific')
-    group.add_argument('--loops', type=int, default=-1, help='default infinitely')
+    group.add_argument('--loops', type=int, default=1, help='default infinitely')
     group.add_argument('--duration', type=int, default=-1, help='default infinitely, measured in seconds')
 
     op7 = operations.add_parser(
@@ -342,6 +355,12 @@ def main():
             '--perf-filepath', type=str, default=PERF_FILEPATH, help='where to dump the csv with performance data.'
         )
         group.add_argument(
+            '--byte-array-throughput-filepath',
+            type=str,
+            default=BYTE_ARRAY_THROUGHPUT_FILEPATH,
+            help='where to dump the csv with byte array throughput data.'
+        )
+        group.add_argument(
             '--value', type=int, default=VALUE, help='fill bytearray with a constant byte value, default means random.'
         )
         group.add_argument('--log-level', type=str, default=LOG_LEVEL, choices=LOG_LEVELS, help='log level')
@@ -356,12 +375,16 @@ def main():
 
     if args.operation == 'perf':
         create_byte_array_high_throughput(
-            value=args.value, data_filepath=args.data_filepath, perf_filepath=args.perf_filepath
+            value=args.value,
+            data_filepath=args.data_filepath,
+            byte_array_throughput_filepath=args.byte_array_throughput_filepath
         )
 
     elif args.operation == 'perf+fill':
         sweetspot_byte_array = create_byte_array_high_throughput(
-            data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, value=args.value
+            data_filepath=args.data_filepath,
+            byte_array_throughput_filepath=args.byte_array_throughput_filepath,
+            value=args.value
         )
         write_byte_array_contiguously(sweetspot_byte_array, data_filepath=args.data_filepath)
 
@@ -385,7 +408,9 @@ def main():
 
     elif args.operation == 'perf+write':
         sweetspot_byte_array = create_byte_array_high_throughput(
-            data_filepath=args.data_filepath, perf_filepath=args.perf_filepath, value=args.value
+            data_filepath=args.data_filepath,
+            byte_array_throughput_filepath=args.byte_array_throughput_filepath,
+            value=args.value
         )
         write_bytearray_to_disk(sweetspot_byte_array, size=args.size, data_filepath=args.data_filepath)
 
@@ -393,6 +418,7 @@ def main():
         perf_fill_read(
             data_filepath=args.data_filepath,
             perf_filepath=args.perf_filepath,
+            byte_array_throughput_filepath=args.byte_array_throughput_filepath,
             value=args.value,
             loops=args.loops,
             duration=args.duration
@@ -518,15 +544,15 @@ def main():
         logging.debug('starting perf+fill')
         started = datetime.datetime.now()
         popens = []
+        mode = 'perf+fill+read'
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
             data_filepath = f'{drive_letter}:/{drive_number}-perf+fill.dat'
             perf_filepath = f'{drive_letter}:/{drive_number}-perf+fill.csv'
             stdout = f'{drive_letter}:/{drive_number}-perf+fill.stdout'
-            stderr = f'{drive_letter}:/{drive_number}-perf+fill.stderr'
             cmd = [
                 sys.executable,
                 os.path.abspath(__file__),
-                'perf+fill+read',
+                mode,
                 '--data-filepath',
                 data_filepath,
                 '--perf-filepath',
@@ -534,18 +560,18 @@ def main():
                 '--value',
                 str(args.value),
                 '--log-level',
-                args.log_level,
+                str(args.log_level),
                 '--loops',
-                args.loops,
+                str(args.loops),
                 '--duration',
-                args.duration,
+                str(args.duration),
             ]
             logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd))
-            with open(stdout, 'wb') as sout, open(stderr, 'wb') as serr:
-                popen = subprocess.Popen(cmd, stdout=sout, stderr=serr)
+            with open(stdout, 'wb') as sout:
+                popen = subprocess.Popen(cmd, stdout=sout)
                 popens.append(popen)
 
-        logging.info('launching multi perf+fill on %d partitions/drives...', len(drive_number_to_letter_dict))
+        logging.info('launching multi %r on %d partitions/drives...', mode, len(drive_number_to_letter_dict))
         try:
             while True:
                 now = datetime.datetime.now()
@@ -571,10 +597,9 @@ def main():
             data_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.dat')
             perf_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.csv')
             stdout = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.stdout')
-            stderr = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.stderr')
 
             dirpath = os.path.dirname(args.perf_filepath)
-            for filepath in [data_filepath, perf_filepath, stdout, stderr]:
+            for filepath in [data_filepath, perf_filepath, stdout]:
                 destination = os.path.join(dirpath, os.path.basename(filepath))
                 logging.info('output: "%s"', destination)
                 if os.path.isfile(destination):
@@ -587,7 +612,7 @@ def main():
                 os.remove(data_filepath)
             except Exception:
                 logging.error('unable to delete ""%s', data_filepath)
-            for src in [perf_filepath, stdout, stderr]:
+            for src in [perf_filepath, stdout]:
                 if os.path.isfile(src):
                     shutil.move(src, dirpath)
 

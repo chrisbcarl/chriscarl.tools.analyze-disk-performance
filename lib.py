@@ -9,7 +9,7 @@ import logging
 import datetime
 import threading
 import subprocess
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 
 # 3rd party
 import pandas as pd
@@ -19,7 +19,7 @@ import psutil
 import constants
 from constants import (
     DATA_FILEPATH,
-    PERF_FILEPATH,
+    BYTE_ARRAY_THROUGHPUT_FILEPATH,
     DRIVE,
     VALUE,
     DURATION,
@@ -60,14 +60,30 @@ def create_bytearray_killobytes(count, value=VALUE):
     return killobytes_array
 
 
+def diff_bytes(byte_array_l, byte_array_r, max_diffs=10):
+    # type: (bytearray, bytearray, int) -> List[str]
+    diffs = []
+    if len(byte_array_l) != len(byte_array_r):
+        diffs = [f'length does not match: {len(byte_array_l)} != {len(byte_array_r)}']
+
+    for i in range(max([len(byte_array_l), len(byte_array_r)])):
+        bl, br = byte_array_l[i], byte_array_r[i]
+        if bl != br:
+            diffs.append(f'byte at index {i} unequal: {bl!r} != {br!r}')
+        if len(diffs) > max_diffs:
+            break
+
+    return diffs
+
+
 def disk_usage_monitor(event, drive=DRIVE):
     # type: (threading.Event, str) -> None
     prior_percent = None
     while not event.is_set():
         du = psutil.disk_usage(drive)
-        if du.percent != prior_percent:
+        if str(du.percent) != str(prior_percent):
             logging.info('disk usage: %s%%', du.percent)
-            prior_percent = du.percent
+            prior_percent = str(du.percent)
         for _ in range(100):
             time.sleep(1 / 100)
             if event.is_set():
@@ -144,7 +160,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH, itera
             with open(data_filepath, 'ab') as wb:
                 iteration = 0
                 while psutil.disk_usage(drive).free > byte_array_bytes:
-                    if iteration % 100 == 0:
+                    if iteration % 10000 == 0:
                         logging.debug('i: %d', iteration)
                     wb.write(byte_array)
                     iteration += 1
@@ -171,7 +187,9 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH, itera
     logging.debug('disk usage: %s%%', du.percent)
 
 
-def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath=PERF_FILEPATH, value=VALUE):
+def create_byte_array_high_throughput(
+    data_filepath=DATA_FILEPATH, byte_array_throughput_filepath=BYTE_ARRAY_THROUGHPUT_FILEPATH, value=VALUE
+):
     # type: (str, str, int) -> bytearray
     '''
     Description:
@@ -183,7 +201,10 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
     Returns:
         bytearray
     '''
-    logging.info('data_filepath="%s", perf_filepath="%s", value=%s', data_filepath, perf_filepath, value)
+    logging.info(
+        'data_filepath="%s", byte_array_throughput_filepath="%s", value=%s', data_filepath,
+        byte_array_throughput_filepath, value
+    )
     rows = []
     sweetspot_bytearray = bytearray()
     sweetspot_killobytes = 0
@@ -209,7 +230,7 @@ def create_byte_array_high_throughput(data_filepath=DATA_FILEPATH, perf_filepath
         rows.append(row)
     df = pd.DataFrame(rows)
     logging.debug('\n%s', df)
-    df.to_csv(perf_filepath, index=False)
+    df.to_csv(byte_array_throughput_filepath, index=False)
     logging.info('%s kb - %0.3f mb/s - sweetspot', sweetspot_killobytes, sweetspot_rate)
     return sweetspot_bytearray
 
@@ -256,15 +277,12 @@ def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
         while read_array:
             if len(read_array) == len(byte_array):
                 assert read_array == byte_array, (
-                    f'on iteration {i}, full array read != write!'  # \n
-                    # f'Expected {byte_array}\n'
-                    # f'Read {read_array}'
+                    '\n'.join([f'on iteration {i}, full array read != write!'] + diff_bytes(read_array, byte_array))
                 )
             else:
-                assert read_array == byte_array[:len(read_array)], (
-                    f'on iteration {i}, sub array read != write!'  # \n
-                    # f'Expected {byte_array}\n'
-                    # f'Read {read_array}'
+                sub_array = byte_array[:len(read_array)]
+                assert read_array == sub_array, (
+                    '\n'.join([f'on iteration {i}, sub full array read != write!'] + diff_bytes(read_array, sub_array))
                 )
 
             read_array = rb.read(len(byte_array))
