@@ -23,6 +23,8 @@ Date:       2024-09-26
 Modified:   2024-09-26
 
 Modified:
+    2025-08-05 - chrisbcarl - moved files to the root of the perf filepath so the files
+                                dont contend with each other for bandwidth or space
     2025-08-03 - chrisbcarl - moved functions around, perfected the read_bytearray_from_disk
                               cleaned up perf+fill+read minutia
     2025-08-02 - chrisbcarl - added perf+fill+read and smartmon
@@ -545,10 +547,11 @@ def main():
         started = datetime.datetime.now()
         popens = []
         mode = 'perf+fill+read'
+        output_drive = args.perf_filepath.split(os.sep)[0]
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
             data_filepath = f'{drive_letter}:/{drive_number}-perf+fill.dat'
-            perf_filepath = f'{drive_letter}:/{drive_number}-perf+fill.csv'
-            stdout = f'{drive_letter}:/{drive_number}-perf+fill.stdout'
+            perf_filepath = f'{output_drive}/{drive_number}-perf+fill.csv'
+            stdout = f'{output_drive}/{drive_number}-perf+fill.stdout'
             cmd = [
                 sys.executable,
                 os.path.abspath(__file__),
@@ -595,26 +598,10 @@ def main():
                 subprocess.Popen(['taskkill', '/pid', str(popen.pid), '/f', '/t'], shell=True).wait()
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
             data_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.dat')
-            perf_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.csv')
-            stdout = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.stdout')
-
-            dirpath = os.path.dirname(args.perf_filepath)
-            for filepath in [data_filepath, perf_filepath, stdout]:
-                destination = os.path.join(dirpath, os.path.basename(filepath))
-                logging.info('output: "%s"', destination)
-                if os.path.isfile(destination):
-                    try:
-                        os.remove(destination)
-                    except Exception:
-                        logging.error('unable to delete ""%s', destination)
-
             try:
                 os.remove(data_filepath)
             except Exception:
                 logging.error('unable to delete ""%s', data_filepath)
-            for src in [perf_filepath, stdout]:
-                if os.path.isfile(src):
-                    shutil.move(src, dirpath)
 
         logging.debug('removing partitions...')
         delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
