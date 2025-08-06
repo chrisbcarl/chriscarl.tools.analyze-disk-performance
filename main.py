@@ -44,13 +44,13 @@ TODO:
     - dynamic crystaldiskinfo txt
 
 Examples:
-    1. Find performance sweetspot and fill the disk at partition D:/
-        python main.py perf+fill --data-filepath D:/temp
-    2. Evaluate overall health on all newly inserted disks
-        python main.py health --ignore-partitions C --log-level DEBUG
-    3. What most people think of as write-read
+    - What most people think of as write-read benchmarking
         python main.py perf+fill+read --data-filepath Y:/temp
-    4. Just launch a cyrstaldiskinfo monitor
+    - Find performance sweetspot and fill the disk at partition D:/
+        python main.py perf+fill --data-filepath D:/temp
+    - Evaluate overall health on all newly inserted disks
+        python main.py health --ignore-partitions C --log-level DEBUG
+    - Just launch a cyrstaldiskinfo monitor
         python main.py smartmon
 '''
 # stdlib
@@ -88,6 +88,7 @@ from constants import (
     CRYSTALDISKINFO_EXE,
 )
 from lib import (
+    abspath,
     get_keys_from_dicts,
     create_bytearray,
     create_bytearray_killobytes,
@@ -182,6 +183,7 @@ def perf_fill_read(
             try:
                 logging.info('fill+read iteration %d / %d', iteration, loops)
                 write_byte_array_contiguously(sweetspot_byte_array, data_filepath=data_filepath)
+                logging.info('read iteration %d / %d', iteration, loops)
                 read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
             except KeyboardInterrupt:
                 logging.warning('ctrl + c detected!')
@@ -197,6 +199,7 @@ def perf_fill_read(
                 if elapsed > duration:
                     logging.info('time exceeded after write')
                     break
+                logging.info('read iteration %d / %d', iteration, loops)
                 read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
                 if elapsed > duration:
                     logging.info('time exceeded after read')
@@ -213,6 +216,7 @@ def perf_fill_read(
             try:
                 logging.info('fill+read iteration %d infinitely', iteration)
                 write_byte_array_contiguously(sweetspot_byte_array, data_filepath=data_filepath)
+                logging.info('read iteration %d / %d', iteration, loops)
                 read_bytearray_from_disk(sweetspot_byte_array, data_filepath=data_filepath)
 
                 iteration += 1
@@ -478,13 +482,13 @@ def main():
             raise NotImplementedError(sys.platform)
 
         logging.debug('checking admin access')
-        admin_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\admin.ps1")
+        admin_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\admin.ps1")
         subprocess.check_call(['powershell', admin_ps1])
         logging.info('admin detected!')
 
         # get current partitions
         logging.debug('sanitizing unwanted partitions')
-        read_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\read-partitions.ps1")
+        read_partitions_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\read-partitions.ps1")
         cmd = ['powershell', read_partitions_ps1]
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
@@ -501,7 +505,7 @@ def main():
 
         if drive_letters_to_remove:
             logging.debug('remove partitions so they return to raw')
-            delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
+            delete_partitions_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
             cmd = ['powershell', delete_partitions_ps1, '-DriveLetters', ','.join(drive_letters_to_remove)]
             logging.debug(subprocess.list2cmdline(cmd))
             output = subprocess.check_output(cmd, universal_newlines=True)
@@ -509,7 +513,7 @@ def main():
             logging.info('removed unwanted partitions!')
 
         logging.debug('make new partitions')
-        create_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\create-partitions.ps1")
+        create_partitions_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\create-partitions.ps1")
         cmd = ['powershell', create_partitions_ps1, '-DriveLetters', ','.join(drive_letters_to_remove)]
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
@@ -522,7 +526,7 @@ def main():
         logging.info('created new partitions!')
 
         logging.debug('reading disks')
-        read_disks_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\read-disks.ps1")
+        read_disks_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\read-disks.ps1")
         cmd = ['powershell', read_disks_ps1]
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
@@ -547,19 +551,22 @@ def main():
         started = datetime.datetime.now()
         popens = []
         mode = 'perf+fill+read'
-        output_drive = args.perf_filepath.split(os.sep)[0]
+        output_dirpath = os.path.dirname(args.perf_filepath)
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
-            data_filepath = f'{drive_letter}:/{drive_number}-perf+fill.dat'
-            perf_filepath = f'{output_drive}/{drive_number}-perf+fill.csv'
-            stdout = f'{output_drive}/{drive_number}-perf+fill.stdout'
+            data_filepath = abspath(f'{drive_letter}:/{drive_number}-perf+fill.dat')
+            byte_array_throughput_filepath = abspath(f'{output_dirpath}/{drive_number}-perf+fill-bytearray.csv')
+            perf_filepath = abspath(f'{output_dirpath}/{drive_number}-perf+fill.csv')
+            stdout = abspath(f'{output_dirpath}/{drive_number}-perf+fill.stdout')
             cmd = [
                 sys.executable,
-                os.path.abspath(__file__),
+                abspath(__file__),
                 mode,
                 '--data-filepath',
                 data_filepath,
                 '--perf-filepath',
                 perf_filepath,
+                '--byte-array-throughput-filepath',
+                byte_array_throughput_filepath,
                 '--value',
                 str(args.value),
                 '--log-level',
@@ -597,14 +604,14 @@ def main():
                 popen.kill()
                 subprocess.Popen(['taskkill', '/pid', str(popen.pid), '/f', '/t'], shell=True).wait()
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
-            data_filepath = os.path.abspath(f'{drive_letter}:/{drive_number}-perf+fill.dat')
+            data_filepath = abspath(f'{drive_letter}:/{drive_number}-perf+fill.dat')
             try:
                 os.remove(data_filepath)
             except Exception:
                 logging.error('unable to delete ""%s', data_filepath)
 
         logging.debug('removing partitions...')
-        delete_partitions_ps1 = os.path.join(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
+        delete_partitions_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\delete-partitions.ps1")
         cmd = [
             'powershell', delete_partitions_ps1, '-Offline', '-DriveLetters',
             ','.join(drive_number_to_letter_dict.values())

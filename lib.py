@@ -27,6 +27,10 @@ from constants import (
 )
 
 
+def abspath(*paths):
+    return os.path.abspath(os.path.expanduser(os.path.join(*paths)))
+
+
 def get_keys_from_dicts(*dicts):
     keys = []
     for dick in dicts:
@@ -140,7 +144,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH, itera
         raise ValueError('Doesnt make sense to run for 0 iterations!')
     logging.info('data_filepath="%s"', data_filepath)
 
-    drive, _ = os.path.splitdrive(os.path.abspath(data_filepath))
+    drive, _ = os.path.splitdrive(abspath(data_filepath))
 
     one_mb_bytes = (1024**2)
     byte_array_bytes = len(byte_array)
@@ -160,7 +164,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH, itera
             with open(data_filepath, 'ab') as wb:
                 iteration = 0
                 while psutil.disk_usage(drive).free > byte_array_bytes:
-                    if iteration % 10000 == 0:
+                    if iterations != -1 and iteration % 10000 == 0:
                         logging.debug('i: %d', iteration)
                     wb.write(byte_array)
                     iteration += 1
@@ -179,6 +183,7 @@ def write_byte_array_contiguously(byte_array, data_filepath=DATA_FILEPATH, itera
                             break
     except KeyboardInterrupt:
         logging.info('cancelling')
+        raise
     except OSError:
         logging.info('done')
     finally:
@@ -248,6 +253,7 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, ra
         pass
     iterations = size // len(byte_array)
     with open(data_filepath, 'ab') as wb:
+        prior = ''
         for i in range(iterations):
             # basically "fake" randomness even further by starting at different points within the already created one.
             # if fill is provided, they're all constants anyway
@@ -257,13 +263,14 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, ra
                 wb.write(byte_array[0:midpoint])
             else:
                 wb.write(byte_array)
-            logging.debug(
-                '%0.3f%% or %0.3f MB written', (i + 1) / (iterations + 1) * 100,
-                os.path.getsize(data_filepath) / 1024**2
-            )
+            getsize = os.path.getsize(data_filepath) / 1024**2
+            getsizestr = f'{getsize:0.1f}'
+            if getsizestr != prior:
+                logging.info('%0.3f%% or %s MB written', (i + 1) / (iterations + 1) * 100, getsizestr)
+                prior = f'{getsize:0.1f}'
         remainder = size - os.path.getsize(data_filepath)
         wb.write(byte_array[0:remainder])
-        logging.debug(
+        logging.info(
             '%0.3f%% or %0.3f MB written', (i + 2) / (iterations + 1) * 100,
             os.path.getsize(data_filepath) / 1024**2
         )
@@ -272,6 +279,7 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, ra
 def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
     iterations = os.path.getsize(data_filepath) // len(byte_array)
     with open(data_filepath, 'rb') as rb:
+        prior = ''
         i = 0
         read_array = rb.read(len(byte_array))
         while read_array:
@@ -287,7 +295,13 @@ def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
 
             read_array = rb.read(len(byte_array))
             i += 1
-            logging.debug('%0.3f%% or %0.3f MB read', i / (iterations) * 100, len(byte_array) * i / 1024**2)
+            getsize = len(byte_array) * i / 1024**2
+            getsizestr = f'{getsize:0.1f}'
+            if prior != getsizestr:
+                logging.info('%0.3f%% or %s MB read', i / (iterations) * 100, getsizestr)
+                prior = f'{getsize:0.1f}'
+    getsize = len(byte_array) * i / 1024**2
+    logging.info('%0.3f%% or %0.3f MB written', i / (iterations) * 100, getsize)
 
 
 def generate_and_write_bytearray(
@@ -320,7 +334,7 @@ def crystaldiskinfo():
     # TODO: dynamic crystaldiskinfo txt
     if constants.CRYSTALDISKINFO_TXT == '':
         candidates = [
-            os.path.join(os.path.dirname(constants.CRYSTALDISKINFO_EXE), 'DiskInfo.txt'),
+            abspath(os.path.dirname(constants.CRYSTALDISKINFO_EXE), 'DiskInfo.txt'),
             r'C:\ProgramData\chocolatey\lib\crystaldiskinfo.portable\tools\DiskInfo.txt',
             os.path.expanduser(r'~\Desktop\crystaldiskinfo.portable\tools'),
             r'C:\Program Files\CrystalDiskInfo\DiskInfo.txt',
