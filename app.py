@@ -25,6 +25,7 @@ Modified:   2024-09-26
 Modified:
     2025-08-07 - chrisbcarl - added create_partitions, delete_partitions
                                 added health, now I just need to test
+                                fine tuning after running it successfully, added defaults awareness
     2025-08-06 - chrisbcarl - nearly full re-write, re-orged into app.py, will be further developed on
     2025-08-05 - chrisbcarl - moved files to the root of the perf filepath so the files
                                 dont contend with each other for bandwidth or space
@@ -165,8 +166,12 @@ def summarize_crystaldiskinfo_df(df):
             writes_min, writes_max = writes_min.split()[0], writes_max.split()[0]
         writes_min, writes_max = float(writes_min), float(writes_max)
 
-        read_throughput = f'{(reads_max - reads_min) / elapsed:0.3f} {unit}/s'
-        write_throughput = f'{(writes_max - writes_min) / elapsed:0.3f} {unit}/s'
+        if elapsed == 0:
+            read_throughput = f'0 {unit}/s'
+            write_throughput = f'0 {unit}/s'
+        else:
+            read_throughput = f'{(reads_max - reads_min) / elapsed:0.3f} {unit}/s'
+            write_throughput = f'{(writes_max - writes_min) / elapsed:0.3f} {unit}/s'
         df.loc[group_df.index, 'Read Perf'] = read_throughput
         df.loc[group_df.index, 'Write Perf'] = write_throughput
 
@@ -215,7 +220,7 @@ def summarize_crystaldiskinfo_df(df):
 def telemetry(
     skip_telemetry=constants.SKIP_TELEMETRY,
     poll=constants.POLL,
-    smart_filepath=constants.DATA_FILEPATH,
+    smart_filepath=constants.SMART_FILEPATH,
     data_filepath=constants.DATA_FILEPATH,
     summary_filepath=constants.SUMMARY_FILEPATH,
     no_crystaldiskinfo=constants.NO_CRYSTALDISKINFO,
@@ -494,11 +499,19 @@ def write(
         bytearray
     '''
     drive_letter, _ = os.path.splitdrive(data_filepath)
+    if search_optimal:
+        logging.info('creating bytearray...')
+        byte_array = lib.create_byte_array_high_throughput(
+            data_filepath=data_filepath, search_optimal_filepath=search_optimal_filepath, value=value
+        )
+    create = False
     if isinstance(byte_array, bytearray):
         if len(byte_array) == 0:
-            raise ValueError('byte_array cannot be lenght 0!')
+            create = True
         logging.info('reusing bytearray of size %s...', lib.bytes_to_size(len(byte_array)))
     else:
+        create = True
+    if create:
         logging.info('creating bytearray...')
         if size != constants.SIZE:
             byte_array = lib.create_bytearray(size, value=value)
@@ -506,6 +519,7 @@ def write(
             byte_array = lib.create_byte_array_high_throughput(
                 data_filepath=data_filepath, search_optimal_filepath=search_optimal_filepath, value=value
             )
+    byte_array = byte_array or bytearray()  # for type hinting
 
     filesize = lib.bytes_to_size(len(byte_array))
     until = ''
@@ -741,6 +755,7 @@ def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_par
     if admin_detect() != 0:
         raise RuntimeError('Must be run as administrator or sudo!')
 
+    disk_numbers = []
     if not include_partitions:
         # get all partitions
         read_partitions_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\read-partitions.ps1")
@@ -763,10 +778,11 @@ def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_par
         logging.debug(subprocess.list2cmdline(cmd))
         output = subprocess.check_output(cmd, universal_newlines=True)
         logging.debug(output)
+    if disk_numbers:
         logging.info('deleted partitions. disk numbers: %s', disk_numbers)
         return disk_numbers
 
-    return []
+    return disk_numbers
 
 
 def create_partitions(disk_numbers=constants.DISK_NUMBERS):
@@ -802,6 +818,9 @@ def create_partitions(disk_numbers=constants.DISK_NUMBERS):
     logging.debug(output)
     disk_number_to_letter_dict = json.loads(output)
     logging.info('created new partitions: %s!', disk_number_to_letter_dict)
+    for k, v in disk_number_to_letter_dict.items():
+        if v is None:
+            raise RuntimeError(f'Drive {k} was unable to create a partition: {v}!')
 
     return disk_number_to_letter_dict
 
@@ -813,10 +832,9 @@ def health(
     # array
     size=constants.SIZE,
     value=constants.VALUE,
-    search_optimal=constants.SEARCH_OPTIMAL,
     search_optimal_filepath=constants.SEARCH_OPTIMAL_FILEPATH,
     # flow
-    iterations=constants.ITERATIONS,
+    iterations=3,
     duration=constants.DURATION,
     # write
     burn_in=constants.BURN_IN,
@@ -826,6 +844,10 @@ def health(
     log_level='INFO',
     poll=constants.POLL,
 ):
+    '''
+    Description:
+        Launch a pre-determined flow upon every relevant disk. WARNING: DO NOT RUN IN HIGHLY POPULATED PCs!
+    '''
     operation = 'write+read'
     logging.info('starting %r', operation)
 
@@ -837,6 +859,10 @@ def health(
 
     logging.info('creating partitions...')
     disk_number_to_letter_dict = create_partitions(disk_numbers=disk_numbers)
+    if len(disk_numbers) != len(disk_number_to_letter_dict):
+        raise RuntimeError(
+            f'Number of disks != number of partitions created! {len(disk_numbers)} != {len(disk_number_to_letter_dict)} | {disk_number_to_letter_dict}'
+        )
 
     popens = []
     logging.info('flowing on %d partitions/drives...', len(disk_number_to_letter_dict))
@@ -844,14 +870,14 @@ def health(
     output_dirpath = constants.TEMP_DIRPATH
     for drive_number, drive_letter in disk_number_to_letter_dict.items():
         data_filepath = abspath(f'{drive_letter}:/{drive_number}-{operation}.dat')
-        perf_filepath = abspath(f'{output_dirpath}/{drive_number}-{operation}.csv')
-        search_optimal_filepath = abspath(f'{output_dirpath}/{drive_number}-{operation}-bytearray.csv')
+        search_optimal_filepath = abspath(f'{output_dirpath}/{drive_number}-{operation}-search_optimal.csv')
         stdout = abspath(f'{output_dirpath}/{drive_number}-{operation}.stdout')
         cmd = [
             sys.executable,
             abspath(__file__),
             # flow control
             'flow',
+            '--steps',
             'write',
             'read',
             '--flow-iterations',
@@ -859,30 +885,32 @@ def health(
             '--flow-duration',
             duration,
             # general / telemetry
+            '--skip-telemetry',
             '--data-filepath',
             data_filepath,
-            '--perf-filepath',
-            perf_filepath,
+            '--log-level',
+            log_level,
             # array
-            '--size',
-            str(size),
-            '--value',
-            str(value),
             '--search-optimal-filepath',
             search_optimal_filepath,
-            '--log-level',
-            str(log_level),
-            '--skip-telemetry',
             # read/write args
             '--iterations',
-            '1',
+            1
         ]
-        if search_optimal:
+
+        # array
+        if size == constants.SIZE:
             cmd += ['--search-optimal']
+        else:
+            cmd += ['--size', size]
+        if value != constants.VALUE:
+            cmd += ['--value', value]
+
         if burn_in:
             cmd += ['--burn-in']
         if random_read != constants.RANDOM_READ:
-            cmd += ['--random-read', str(random_read)]
+            cmd += ['--random-read', random_read]
+        cmd = [str(ele) for ele in cmd]
         logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd))
         with open(stdout, 'wb') as sout:
             popen = subprocess.Popen(cmd, stdout=sout)
@@ -906,13 +934,15 @@ def health(
             subprocess.Popen(['taskkill', '/pid', str(popen.pid), '/f', '/t'], shell=True).wait()
     for drive_number, drive_letter in disk_number_to_letter_dict.items():
         data_filepath = abspath(f'{drive_letter}:/{drive_number}-{operation}.dat')
-        try:
-            os.remove(data_filepath)
-        except Exception:
-            logging.error('unable to delete ""%s', data_filepath)
+        if os.path.isfile(data_filepath):
+            try:
+                os.remove(data_filepath)
+            except Exception:
+                logging.error('unable to delete ""%s', data_filepath)
 
-    logging.info('removing partitions...')
-    delete_partitions(include_partitions=list(disk_number_to_letter_dict.values()))
+    # TODO: remove
+    # logging.info('removing partitions...')
+    # delete_partitions(include_partitions=list(disk_number_to_letter_dict.values()))
 
 
 FUNC_NAMES = ['write', 'read', 'flow', 'telemetry', 'delete_partitions', 'create_partitions', 'health']
@@ -1026,16 +1056,16 @@ OPERATION_ARGUMENTS = {
     'include_partitions': dict(type=str, nargs='*', default=[], help='override ignore, include only these'),
     'disk_numbers': dict(type=int, nargs='*', default=constants.DISK_NUMBERS, help='if known disk numbers, use these'),
     'disk_number_to_letter_dict': dict(type=str, help='pass as string, ex) {"1": "D:"}'),
-    'skip_telemetry': dict(type=bool, help='skip telemetry entirely'),
 }
 TELEMETRY_ARGUMENTS = {
+    'skip_telemetry': dict(type=bool, help='skip telemetry entirely'),
+    'all_drives': dict(type=bool, help='if enabled, it queries telemetry from all drives, rather than the one'),
     'poll': dict(type=float, default=constants.POLL, help='telemetry poll poll'),
+    'no_crystaldiskinfo': dict(type=bool, help='if disabled, you can run without admin!'),
     'data_filepath': dict(type=str, default=constants.DATA_FILEPATH, help='file that fills the disk'),
     'smart_filepath': dict(type=str, default=constants.SMART_FILEPATH, help='dump S.M.A.R.T. from CrystalDiskInfo.'),
     'summary_filepath': dict(type=str, default=constants.SUMMARY_FILEPATH, help='afteraction summary'),
     'log_level': dict(type=str, default=constants.LOG_LEVEL, choices=constants.LOG_LEVELS, help='log level'),
-    'no_crystaldiskinfo': dict(type=bool, help='if disabled, you can run without admin!'),
-    'all_drives': dict(type=bool, help='if enabled, it queries telemetry from all drives, rather than the one'),
 }
 
 
@@ -1050,7 +1080,6 @@ def validate_kwargs(
     iterations=constants.ITERATIONS,
     flow_iterations=constants.FLOW_ITERATIONS,
     data_filepath=constants.DATA_FILEPATH,
-    perf_filepath=constants.PERF_FILEPATH,
     search_optimal_filepath=constants.SEARCH_OPTIMAL_FILEPATH,
     summary_filepath=constants.SUMMARY_FILEPATH,
     smart_filepath=constants.SMART_FILEPATH,
@@ -1070,6 +1099,7 @@ def validate_kwargs(
     burn_in=constants.BURN_IN,
     no_crystaldiskinfo=constants.NO_CRYSTALDISKINFO,
     all_drives=constants.ALL_DRIVES,
+    skip_telemetry=constants.SKIP_TELEMETRY,
 ):
     if func not in FUNCS:
         raise KeyError(f'func {func!r} does not exist, use one of {FUNCS}!')
@@ -1078,7 +1108,7 @@ def validate_kwargs(
     if value != -1:
         if value < 0 and 255 < value:
             raise ValueError('value must be a value between [0,255] or -1')
-    if size < 1:
+    if size != -1 and size <= 0:
         raise ValueError('size must be a postive int, are you nuts?')
     if duration < 0 and duration != -1:
         raise ValueError('duration must be a postive num (or -1), are you nuts?')
@@ -1088,7 +1118,7 @@ def validate_kwargs(
         raise ValueError('iterations must be a postive num (or -1), are you nuts?')
     if flow_iterations < -1:
         raise ValueError('flow_iterations must be a postive num (or -1), are you nuts?')
-    for filepath in [data_filepath, perf_filepath, search_optimal_filepath, summary_filepath, smart_filepath]:
+    for filepath in [data_filepath, search_optimal_filepath, summary_filepath, smart_filepath]:
         if not os.path.isdir(os.path.dirname(filepath)):
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
     if poll < 0:
@@ -1138,6 +1168,8 @@ def validate_kwargs(
         raise TypeError(f'no_crystaldiskinfo must be of type bool, provided {type(no_crystaldiskinfo)}')
     if not isinstance(all_drives, bool):
         raise TypeError(f'all_drives must be of type bool, provided {type(all_drives)}')
+    if not isinstance(skip_telemetry, bool):
+        raise TypeError(f'skip_telemetry must be of type bool, provided {type(skip_telemetry)}')
 
 
 def main():
@@ -1154,8 +1186,14 @@ def main():
         group = op.add_argument_group('specific')
         signature = inspect.signature(func)
         for key in signature.parameters:
-            kwargs = OPERATION_ARGUMENTS.get(key)
-            if not kwargs:
+            # print(func, key)
+            argparse_kwargs = {k: v for k, v in OPERATION_ARGUMENTS.get(key, {}).items()}  # copy
+            if 'default' in argparse_kwargs:
+                default = argparse_kwargs['default']
+                func_default = signature.parameters[key].default
+                if default != func_default:
+                    argparse_kwargs['default'] = func_default
+            if not argparse_kwargs:
                 continue
             names = []
             if '_' in key:
@@ -1163,23 +1201,31 @@ def main():
                 names.append(f'--{key}')
             else:
                 names.append(f'--{key}')
-            if kwargs['type'] is bool:
+            if argparse_kwargs['type'] is bool:
                 group.add_argument(
-                    *names, action='store_true', **{
+                    *names,
+                    action='store_true',
+                    **{
                         key: value
-                        for key, value in kwargs.items() if key != 'type'
+                        for key, value in argparse_kwargs.items() if key != 'type'
                     }
                 )
             else:
-                group.add_argument(*names, **kwargs)
+                group.add_argument(*names, **argparse_kwargs)
 
         group = op.add_argument_group('telemetry')
         signature = inspect.signature(telemetry)
         for key in signature.parameters:
-            if key in OPERATION_ARGUMENTS:
-                continue
-            kwargs = TELEMETRY_ARGUMENTS.get(key)
-            if not kwargs:
+            # print(func, key)
+            # if key in OPERATION_ARGUMENTS:
+            #     continue
+            argparse_kwargs = {k: v for k, v in TELEMETRY_ARGUMENTS.get(key, {}).items()}  # copy
+            if 'default' in argparse_kwargs:
+                default = argparse_kwargs['default']
+                func_default = signature.parameters[key].default
+                if default != func_default:
+                    argparse_kwargs['default'] = func_default
+            if not argparse_kwargs:
                 continue
             names = []
             if '_' in key:
@@ -1187,15 +1233,22 @@ def main():
                 names.append(f'--{key}')
             else:
                 names.append(f'--{key}')
-            if kwargs['type'] is bool:
-                group.add_argument(
-                    *names, action='store_true', **{
-                        key: value
-                        for key, value in kwargs.items() if key != 'type'
-                    }
-                )
-            else:
-                group.add_argument(*names, **kwargs)
+            try:
+                if argparse_kwargs['type'] is bool:
+                    group.add_argument(
+                        *names,
+                        action='store_true',
+                        **{
+                            key: value
+                            for key, value in argparse_kwargs.items() if key != 'type'
+                        }
+                    )
+                else:
+                    group.add_argument(*names, **argparse_kwargs)
+            except argparse.ArgumentError as ae:
+                aestr = str(ae)
+                if 'conflicting option strings' in aestr:
+                    pass
 
     args = parser.parse_args()
     func = args.func
@@ -1204,24 +1257,26 @@ def main():
     )
 
     kwargs = vars(args)
-    validate_kwargs(**kwargs)
-    telemetry_kwargs = {k: kwargs[k] for k in TELEMETRY_ARGUMENTS}
-    if func != telemetry:
-        operation_kwargs = {k: kwargs[k] for k in OPERATION_ARGUMENTS}
-    else:
-        operation_kwargs = telemetry_kwargs
+    logging.debug(pprint.pformat(kwargs, indent=2))
+    validate_kwargs(args, **kwargs)
+    telemetry_signature = inspect.signature(telemetry)
+    telemetry_kwargs = {k: kwargs[k] for k in telemetry_signature.parameters if k in TELEMETRY_ARGUMENTS}
+
+    func_signature = inspect.signature(func)
+    func_kwargs = {k: kwargs[k] for k in func_signature.parameters if k in OPERATION_ARGUMENTS}
 
     logging.info('starting %r', func.__name__)
     logging.debug(pprint.pformat(kwargs, indent=2))
+
     stop_event = threading.Event()
     success = True
     stop_event, thread = None, None
     try:
-        if func != telemetry:
+        if func not in [telemetry, create_partitions, delete_partitions]:
             stop_event, thread = telemetry_thread(**telemetry_kwargs)
 
         logging.info('starting %r', func.__name__)
-        func(**operation_kwargs)
+        func(**func_kwargs)
     except KeyboardInterrupt:
         logging.warning('ctrl + c detected!')
     except Exception as ex:
