@@ -2,6 +2,7 @@
     // vscode editor
     "task.allowAutomaticTasks": "on",
     "editor.wordWrap": "off",
+    "debug.inlineValues": "off",  // truly awful otherwise
     "search.exclude": {
         "**/*py*cache*": true,  // covers ./.pytest_cache and __pycache__
         "**/*.venv*": true,

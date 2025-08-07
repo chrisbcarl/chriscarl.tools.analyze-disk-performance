@@ -36,5 +36,55 @@
                 "--log-level", "DEBUG"
             ]
         },
+        {
+            "name": "app - write",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/app.py",
+            "console": "integratedTerminal",
+            "args": [
+                "write",
+                "--size", "1024",
+                "--value", "69",
+                "--data-filepath", "Y:/tmp",
+                "--iterations", "10",
+                // who cares
+                "--log-level", "DEBUG",
+                "--no-crystaldiskinfo",
+            ]
+        },
+        {
+            "name": "app - flow",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/app.py",
+            "console": "integratedTerminal",
+            "args": [
+                "flow", "--steps", "write", "read",
+                "--flow-iterations", "2",
+                // all other steps
+                "--size", "1024",
+                "--value", "69",
+                "--data-filepath", "Y:/tmp",
+                "--iterations", "10",
+                "--burn-in",
+                // who cares
+                "--log-level", "DEBUG",
+                "--no-crystaldiskinfo",
+            ]
+        },
+        {
+            "name": "app - telemetry",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/app.py",
+            "console": "integratedTerminal",
+            "args": [
+                "telemetry", "--poll", "5",
+                // who cares
+                "--log-level", "DEBUG",
+                "--no-crystaldiskinfo",
+            ]
+        },
     ]
 }
