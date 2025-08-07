@@ -1,13 +1,20 @@
 # https://woshub.com/disks-partitions-management-powershell/
 
+[CmdletBinding()]
+param (
+    [Parameter()][Int[]]$DiskNumbers=@()
+)
 
 Get-Disk | Where-Object IsOffline -Eq $True | Set-Disk -IsOffline $False
-$diskNumbers = (Get-Disk | Select-Object DiskNumber).DiskNumber
-$partitionDiskNumbers = (Get-Partition | Where-Object {$_.DriveLetter -Match "[A-Z]"} | Select-Object DiskNumber).DiskNumber
-$unpartitionedDiskNumbers = $diskNumbers | Where-Object {$partitionDiskNumbers -NotContains $_}
+
+if ($DiskNumbers.Count -eq 0) {
+    $AllDiskNumbers = (Get-Disk | Select-Object DiskNumber).DiskNumber
+    $partitionDiskNumbers = (Get-Partition | Where-Object {$_.DriveLetter -Match "[A-Z]"} | Select-Object DiskNumber).DiskNumber
+    $DiskNumbers = $AllDiskNumbers | Where-Object {$partitionDiskNumbers -NotContains $_}
+}
 
 $newDiskNumberToDriveLetter = @{}
-$unpartitionedDiskNumbers | ForEach-Object {
+$DiskNumbers | ForEach-Object {
     $disk = Get-Disk -Number $_
     Write-Host "disk $_"
     $disk

@@ -28,20 +28,13 @@ BURN_IN = False
 SEARCH_OPTIMAL = True
 NO_CRYSTALDISKINFO = False
 ALL_DRIVES = False
+SKIP_TELEMETRY = False
 KB = 1024**1
 MB = 1024**2
 GB = 1024**3
 CRYSTALDISKINFO_EXE = 'DiskInfo64.exe' if sys.platform == 'win32' else 'DiskInfo64'
 CRYSTALDISKINFO_TXT = ''
-CRYSTAL_KEYS = [
-    'Health Status',
-    'Disk Number',
-    'Model',
-    'Serial Number',
-    'Disk Size',
-    'Power On Count',
-    'Host Reads',
-    'Host Writes',
+CRYSTAL_ERROR_KEYS = [
     # sabrent
     'End to End Error Detection Count',
     'Uncorrectable Error Count',
@@ -50,8 +43,21 @@ CRYSTAL_KEYS = [
     'Number of Error Information Log Entries'
     # sandisk
     'End-to-End Error Detection/Correction Count',
-    'Reported Uncorrectable Errors'
+    'Reported Uncorrectable Errors',
 ]
+CRYSTAL_KEYS = [
+    'Health Status',
+    'Disk Number',
+    'Model',
+    'Serial Number',
+    'Disk Size',
+    'Transfer Mode',
+    'Power On Count',
+    'Host Reads',
+    'Host Writes',
+] + CRYSTAL_ERROR_KEYS
+IGNORE_PARTITIONS = ['A', 'B', 'C']
+DISK_NUMBERS = []  # by default none, its too dangerous to set a partition to create without information
 
 OPERATIONS = ['perf', 'fill', 'perf+fill', 'loop', 'write', 'perf+write', 'health', 'perf+fill+read', 'smartmon']
 LOG_LEVELS = list(logging._nameToLevel)  # pylint: disable=(protected-access)
