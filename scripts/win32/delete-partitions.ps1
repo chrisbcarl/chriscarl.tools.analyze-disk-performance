@@ -23,5 +23,4 @@ $DriveLetters | ForEach-Object {
         }
     }
 }
-Write-Host "wtf exit code"
 exit 0

@@ -19,7 +19,7 @@ def fill_disk(output_dirpath=OUTPUT_DIRPATH):
     with open(source_file, 'wb') as wb:
         for i in range(large_file_size):  # 100mb
             if i % 10**(power - 1) == 0:
-                logging.info('large file written: %0.3f%%', i / large_file_size)
+                logging.info('large file written: %0.1f%%', i / large_file_size)
             wb.write(byte_str)
     disk_free_bytes = psutil.disk_usage('/').free
     files_to_write = [os.path.join(output_dirpath, str(uuid.uuid4())) for _ in range(disk_free_bytes // (mb * large_file_size))]

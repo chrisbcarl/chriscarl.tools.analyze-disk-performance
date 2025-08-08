@@ -430,25 +430,36 @@ def upsert_df_to_csv(df, filepath, index=False):
 def fill_till_bursting(byte_array, drive, data_filepath=constants.DATA_FILEPATH, event=threading.Event()):
     # type: (bytearray, str, str, threading.Event) -> None
     # write the bulk of the data
-    byte_array_bytes = len(byte_array)
+    size = len(byte_array)
+    prior = ''
     with open(data_filepath, 'ab') as wb:
-        while psutil.disk_usage(drive).free > byte_array_bytes:
+        while psutil.disk_usage(drive).free > size:
             if event.is_set():
                 return
             wb.write(byte_array)
 
+            getsize = os.path.getsize(data_filepath) / constants.GB
+            getsizestr = f'{getsize:0.1f}'
+            if getsizestr != prior and int(getsize) % 16 == 0:  # really slow it down
+                logging.info('%s GB written', getsizestr)
+                prior = f'{getsize:0.1f}'
+
         try:
             # write the last chunk in 1mb increments until disk fills and raises OSError
-            for i in range(byte_array_bytes // constants.MB):
+            for i in range(size // constants.MB):
                 if event.is_set():
                     return
                 if psutil.disk_usage(drive).free > constants.MB:
-                    one_mb_array = byte_array[i * constants.MB:(i + 1) * constants.MB]
+                    one_mb_array = byte_array[i * constants.MB:(i + 1) * constants.GB]
                     wb.write(one_mb_array)
                 else:
                     break
         except OSError:
             pass  # this is expected behavior
+
+    remainder = size - os.path.getsize(data_filepath)
+    wb.write(byte_array[0:remainder])
+    logging.info('%0.3f GB written', os.path.getsize(data_filepath) / constants.GB)
 
 
 def touch(filepath):
@@ -630,16 +641,16 @@ def read_random(byte_array, data_filepath=constants.DATA_FILEPATH, chunk_size=16
                 '\n'.join([f'on iteration {i}, full array read != write!'] + lib.diff_bytes(read_array, truth_array))
             )
             bytes_read += chunk_size
-            bytes_read_size = bytes_read / constants.MB
-            bytes_read_size_str = f'{bytes_read_size:0.1f}'
-            print(bytes_read)
-            if prior != bytes_read_size_str:
-                logging.debug('%0.3f%% or %s MB read', (i + 1) / (len(idxes)) * 100, bytes_read_size_str)
+            bytes_read_size = bytes_read / constants.GB
+            bytes_read_size_str = str(int(bytes_read_size))
+            # print(bytes_read)
+            if prior != bytes_read_size_str and int(getsize) % 16 == 0:  # really slow it down
+                logging.info('%0.1f%% or %s GB read', (i + 1) / (len(idxes)) * 100, bytes_read_size_str)
                 prior = bytes_read_size_str
 
-    bytes_read_size = bytes_read / constants.MB
+    bytes_read_size = bytes_read / constants.GB
     bytes_read_size_str = f'{bytes_read_size:0.3f}'
-    logging.debug('%0.3f%% or %s MB read', (i + 1) / (len(idxes)) * 100, bytes_read_size_str)
+    logging.info('%0.1f%% or %s GB read', (i + 1) / (len(idxes)) * 100, bytes_read_size_str)
     prior = bytes_read_size_str
 
     return True
@@ -859,7 +870,7 @@ def health(
 
     logging.info('creating partitions...')
     disk_number_to_letter_dict = create_partitions(disk_numbers=disk_numbers)
-    if len(disk_numbers) != len(disk_number_to_letter_dict):
+    if disk_numbers and (len(disk_numbers) != len(disk_number_to_letter_dict)):
         raise RuntimeError(
             f'Number of disks != number of partitions created! {len(disk_numbers)} != {len(disk_number_to_letter_dict)} | {disk_number_to_letter_dict}'
         )
@@ -1259,15 +1270,17 @@ def main():
     kwargs = vars(args)
     logging.debug(pprint.pformat(kwargs, indent=2))
     validate_kwargs(args, **kwargs)
+
     telemetry_signature = inspect.signature(telemetry)
     telemetry_kwargs = {k: kwargs[k] for k in telemetry_signature.parameters if k in TELEMETRY_ARGUMENTS}
+    telemetry_kwargs.update({k: kwargs[k] for k in telemetry_signature.parameters if k in OPERATION_ARGUMENTS})
 
     func_signature = inspect.signature(func)
     func_kwargs = {k: kwargs[k] for k in func_signature.parameters if k in OPERATION_ARGUMENTS}
+    func_kwargs.update({k: kwargs[k] for k in func_signature.parameters if k in TELEMETRY_ARGUMENTS})
 
     logging.info('starting %r', func.__name__)
     logging.debug(pprint.pformat(kwargs, indent=2))
-
     stop_event = threading.Event()
     success = True
     stop_event, thread = None, None

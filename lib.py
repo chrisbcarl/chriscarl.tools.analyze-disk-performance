@@ -280,14 +280,16 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, ra
                 wb.write(byte_array[0:midpoint])
             else:
                 wb.write(byte_array)
+
             getsize = os.path.getsize(data_filepath) / GB
-            getsizestr = f'{getsize:0.1f}'
-            if getsizestr != prior:
-                logging.debug('%0.3f%% or %s GB written', i / iterations * 100, getsizestr)
-                prior = f'{getsize:0.1f}'
+            getsizestr = str(int(getsize))
+            if getsizestr != prior and int(getsize) % 16 == 0:  # really slow it down
+                logging.debug('%0.1f%% or %s GB written', i / iterations * 100, getsizestr)
+                prior = getsizestr
+
         remainder = size - os.path.getsize(data_filepath)
         wb.write(byte_array[0:remainder])
-        logging.info('%0.3f%% or %0.3f GB written', i / iterations * 100, os.path.getsize(data_filepath) / GB)
+        logging.info('%0.1f%% or %0.3f GB written', i / iterations * 100, os.path.getsize(data_filepath) / GB)
 
 
 def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
@@ -311,13 +313,13 @@ def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
             read_array = rb.read(len(byte_array))
             i += 1
             getsize = len(byte_array) * i / GB
-            getsizestr = f'{getsize:0.1f}'
-            if prior != getsizestr:
-                logging.debug('%0.3f%% or %s GB read', i / (iterations) * 100, getsizestr)
-                prior = f'{getsize:0.1f}'
+            getsizestr = str(int(getsize))
+            if prior != getsizestr and int(getsize) % 16 == 0:  # really slow it down
+                logging.info('%0.1f%% or %s GB read', i / (iterations) * 100, getsizestr)
+                prior = getsizestr
 
     getsize = len(byte_array) * i / GB
-    logging.info('%0.3f%% or %0.3f GB read', i / (iterations) * 100, getsize)
+    logging.info('%0.1f%% or %0.3f GB read', i / (iterations) * 100, getsize)
     return True
 
 
