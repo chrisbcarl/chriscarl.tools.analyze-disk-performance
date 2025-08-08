@@ -4,7 +4,7 @@ import sys
 import logging
 import datetime
 import multiprocessing
-from typing import List
+from typing import List  # noqa: F401
 
 APP_NAME = 'chriscarl.tools.analyze-disk-performance'
 NOW = datetime.datetime.now()

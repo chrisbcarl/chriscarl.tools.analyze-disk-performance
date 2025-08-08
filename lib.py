@@ -9,7 +9,7 @@ import datetime
 import threading
 import subprocess
 from collections import OrderedDict
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List  # noqa: F401
 
 # 3rd party
 import pandas as pd
@@ -24,7 +24,6 @@ from constants import (
     VALUE,
     DURATION,
     ITERATIONS,
-    KB,
     MB,
     GB,
 )
@@ -346,9 +345,10 @@ def generate_and_write_bytearray(
 def crystaldiskinfo_parse(text):
     # type: (str) -> Dict[str, dict]
     content = text.splitlines()
-    crystal_disks = {}  # crystal_disk name to disk number
-    crystal_data = {}  # from .txt
-    crystal_disk = {}  # from .txt
+    # crystal_disk name to disk number
+    crystal_disks = {}  # type: dict
+    crystal_data = {}  # type: dict
+    crystal_disk = {}  # type: dict
     crystal_disk_list = []
     line = content.pop(0)
     try:
@@ -385,14 +385,16 @@ def crystaldiskinfo_parse(text):
                             break
                         try:
                             mo = re.match(
-                                r'(?P<ID>[A-F0-9]{2,})(?P<whocares>[ _0-9]+)? (?P<RawValues>[A-F0-9]{12,}) (?P<AttributeName>.+)',
+                                r'(?P<ID>[A-F0-9]{2,})(?P<whocares>[ _0-9]+)? (?P<RawValues>[A-F0-9]{12,}) (?P<AttributeName>.+)',  # noqa: E501
                                 line
                             )
+                            if not mo:
+                                raise RuntimeError(f'regex doesnt match, line: {line}')
                             dick = mo.groupdict()
                         except Exception:
                             print(repr(line))
                             raise
-                        ID, RawValues, AttributeName = dick['ID'], dick['RawValues'], dick['AttributeName']
+                        RawValues, AttributeName = dick['RawValues'], dick['AttributeName']
                         crystal_disk[AttributeName] = int(RawValues, base=16)
                         line = content.pop(0)
 

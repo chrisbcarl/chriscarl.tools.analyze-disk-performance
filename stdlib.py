@@ -20,3 +20,8 @@ def get_keys_from_dicts(*dicts):
             if key not in keys:
                 keys.append(key)
     return keys
+
+
+def touch(filepath):
+    with open(filepath, 'wb'):  # touch the file
+        pass

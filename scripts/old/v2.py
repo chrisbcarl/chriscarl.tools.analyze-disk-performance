@@ -37,7 +37,8 @@ Modified:
 
 TODO:
 The overall flow should be something like this...
-python main.py departition partition create write read departition --size 100mb --value 69 --loop 5 (implying that the interior code is)
+python main.py departition partition create write read departition --size 100mb --value 69 --loop 5
+    (implying that the interior code is)
     for i in 5:
         for operation in create, write, read:
             execute
@@ -79,25 +80,19 @@ Examples:
 from __future__ import print_function, division
 import os
 import sys
-import re
 import csv
 import time
-import copy
 import json
-import shutil
 import string
-import random
 import logging
 import argparse
 import datetime
-import threading
 import subprocess
 import multiprocessing
-from typing import Tuple, Dict
+from typing import Tuple, Dict  # noqa: F401
 
 # 3rd party
 import pandas as pd
-import psutil
 
 # local
 import constants
@@ -110,7 +105,7 @@ from constants import (
     DURATION,
     ITERATIONS,
 )
-from lib import (
+from lib import (  # noqa: F401
     abspath,
     get_keys_from_dicts,
     create_bytearray,
@@ -625,7 +620,7 @@ def main():
                 popen.kill()
                 subprocess.Popen(['taskkill', '/pid', str(popen.pid), '/f', '/t'], shell=True).wait()
         for drive_number, drive_letter in drive_number_to_letter_dict.items():
-            data_filepath = abspath(f'{drive_letter}:/{drive_number}-{mode}.dat')
+            data_filepath = abspath(f'{drive_letter}:/{drive_number}-{operation}.dat')
             try:
                 os.remove(data_filepath)
             except Exception:
