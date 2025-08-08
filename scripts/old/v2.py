@@ -105,7 +105,7 @@ from constants import (
     DURATION,
     ITERATIONS,
 )
-from lib import (  # noqa: F401
+from v2_lib import (  # noqa: F401
     abspath,
     get_keys_from_dicts,
     create_bytearray,
