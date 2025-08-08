@@ -24,23 +24,10 @@
             ]
         },
         {
-            "name": "write",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "write",
-                "--size",
-                "4194303",  // 4MB - 1
-                "--log-level", "DEBUG"
-            ]
-        },
-        {
             "name": "app - write",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/app.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
                 "write",
@@ -54,10 +41,24 @@
             ]
         },
         {
+            "name": "app - flow: fulpak 1kb, 2x",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "write", "--size", "1mb", "--value", "69", "--data-filepath", "I:/tmp", "--iterations", "2",
+                // common
+                "--no-admin"
+                // "--log-level", "DEBUG",
+            ]
+        },
+        ///
+        {
             "name": "app - flow",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/app.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
                 "flow", "--steps", "write", "read",
@@ -74,10 +75,37 @@
             ]
         },
         {
+            "name": "app - flow 2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "flow", "--steps", "write", "read", "telemetry",
+                "--iterations", "10", "--burn-in", "--size", "1kb",
+                "--flow-iterations", "5",
+                "--log-level", "DEBUG", "--no-crystaldiskinfo"
+            ]
+        },
+        {
+            "name": "app - read",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "read",
+                "--data-filepath", "C:/temp/tmp",
+                "--random-read", "1mb",
+                "--skip-telemetry",
+                "--log-unit", "KB", "--log-mod", "32", "--log-level", "INFO"
+            ]
+        },
+        {
             "name": "app - telemetry",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/app.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
                 "telemetry", "--poll", "5",

@@ -29,7 +29,9 @@ BURN_IN = False
 SEARCH_OPTIMAL = False
 NO_CRYSTALDISKINFO = False
 ALL_DRIVES = False
-SKIP_TELEMETRY = False
+NO_TELEMETRY = False
+NO_ADMIN = False
+DELETE = False
 # by default none, its too dangerous to set a partition to create without information
 DISK_NUMBERS = []  # type: List[str|int]
 # DEFAULTS = {
@@ -45,7 +47,7 @@ DISK_NUMBERS = []  # type: List[str|int]
 #     'SEARCH_OPTIMAL': SEARCH_OPTIMAL,
 #     'NO_CRYSTALDISKINFO': NO_CRYSTALDISKINFO,
 #     'ALL_DRIVES': ALL_DRIVES,
-#     'SKIP_TELEMETRY': SKIP_TELEMETRY,
+#     'NO_TELEMETRY': NO_TELEMETRY,
 # }
 # DEFAULTS.update({k.lower(): DEFAULTS[k] for k in list(DEFAULTS.keys())})
 
@@ -55,6 +57,9 @@ LOG_LEVEL = 'INFO'
 KB = 1024**1
 MB = 1024**2
 GB = 1024**3
+LOG_UNIT = 'GB'
+LOG_UNITS = {'GB': GB, 'MB': MB, 'KB': KB}
+LOG_MOD = 8
 
 CRYSTALDISKINFO_EXE = 'DiskInfo64.exe' if sys.platform == 'win32' else 'DiskInfo64'
 CRYSTALDISKINFO_TXT = ''

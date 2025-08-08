@@ -256,13 +256,27 @@ def create_byte_array_high_throughput(
     return sweetspot_bytearray
 
 
-def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, randomness=True):
-    # type: (bytearray, int, str, bool) -> None
+def write_bytearray_to_disk(
+    byte_array,
+    size=-1,
+    data_filepath=DATA_FILEPATH,
+    randomness=True,
+    log_unit=constants.LOG_UNIT,
+    log_mod=constants.LOG_MOD,
+):
+    # type: (bytearray, int, str, bool, str, int) -> None
     '''
     Description:
         cleverly write a byte_array to the disk,
         especially if the provided array is meant to be repeatedly written until it hits the right size.
+
+    Arguments:
+        log_unit: str
+            default GB, how often do you want to see log files
+        log_mod: int
+            default 8, frequency of i/o that gets logged by EVERY OTHER units
     '''
+    unit = constants.LOG_UNITS[log_unit]
     if size == -1:
         size = len(byte_array)
     with open(data_filepath, 'wb') as wb:
@@ -280,25 +294,33 @@ def write_bytearray_to_disk(byte_array, size=-1, data_filepath=DATA_FILEPATH, ra
             else:
                 wb.write(byte_array)
 
-            getsize = os.path.getsize(data_filepath) / GB
+            getsize = os.path.getsize(data_filepath) / unit
             getsizestr = str(int(getsize))
-            if getsizestr != prior and int(getsize) % 16 == 0:  # really slow it down
-                logging.debug('%0.1f%% or %s GB written', i / iterations * 100, getsizestr)
+            if getsizestr != prior and int(getsize) % log_mod == 0:  # really slow it down
+                logging.debug('%0.3f%% or %0.3f %s written', i / iterations * 100, getsizestr, log_unit)
                 prior = getsizestr
 
         remainder = size - os.path.getsize(data_filepath)
         wb.write(byte_array[0:remainder])
-        logging.info('%0.1f%% or %0.3f GB written', i / iterations * 100, os.path.getsize(data_filepath) / GB)
+        getsize = os.path.getsize(data_filepath) / GB
+        logging.info('%0.3f%% or %0.3f %s written', i / iterations * 100, getsize, log_unit)
 
 
-def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
-    # type: (bytearray, str) -> bool
+def read_bytearray_from_disk(
+    byte_array,
+    data_filepath=DATA_FILEPATH,
+    log_unit=constants.LOG_UNIT,
+    log_mod=constants.LOG_MOD,
+):
+    # type: (bytearray, str, str, int) -> int
+    unit = constants.LOG_UNITS[log_unit]
     iterations = os.path.getsize(data_filepath) // len(byte_array)
     with open(data_filepath, 'rb') as rb:
         prior = ''
-        i = 1
+        i = 0
         read_array = rb.read(len(byte_array))
         while read_array:
+            i += 1
             if len(read_array) == len(byte_array):
                 assert read_array == byte_array, (
                     '\n'.join([f'on iteration {i}, full array read != write!'] + diff_bytes(read_array, byte_array))
@@ -310,16 +332,15 @@ def read_bytearray_from_disk(byte_array, data_filepath=DATA_FILEPATH):
                 )
 
             read_array = rb.read(len(byte_array))
-            i += 1
-            getsize = len(byte_array) * i / GB
+            getsize = len(byte_array) * i / unit
             getsizestr = str(int(getsize))
-            if prior != getsizestr and int(getsize) % 16 == 0:  # really slow it down
-                logging.info('%0.1f%% or %s GB read', i / (iterations) * 100, getsizestr)
+            if prior != getsizestr and int(getsize) % log_mod == 0:  # really slow it down
+                logging.debug('%0.3f%% or %0.3f %s read', i / (iterations) * 100, getsize, log_unit)
                 prior = getsizestr
 
-    getsize = len(byte_array) * i / GB
-    logging.info('%0.1f%% or %0.3f GB read', i / (iterations) * 100, getsize)
-    return True
+    getsize = len(byte_array) * i / unit
+    logging.debug('%0.3f%% or %0.3f %s read', i / (iterations) * 100, getsize, log_unit)
+    return os.path.getsize(data_filepath)
 
 
 def generate_and_write_bytearray(
@@ -498,5 +519,5 @@ def bytes_to_size(size, upper=False):
     units = BYTES_TO_SIZE_UNITS if not upper else [e.upper() for e in BYTES_TO_SIZE_UNITS]
     for unit in units:
         if size < 1024:
-            return '{:.2f}{}'.format(size, unit)
+            return '{:.3f}{}'.format(size, unit)
         size /= 1024
