@@ -168,7 +168,12 @@ def create(
     return byte_array
 
 
-def write_fast_append_remove(byte_array, data_filepath, duration=6.9, iterations=5):
+def write_fast_append_remove(
+    byte_array,
+    data_filepath,
+    duration=6.9,
+    iterations=5,
+):
     # type: (bytearray, str, int|float, int) -> Tuple[int, float]
     touch(data_filepath)
     iteration = 0

@@ -288,7 +288,7 @@ def validate_kwargs(
         raise TypeError(f'steps must be of type bool, provided {type(steps)}')
     assert all(
         step in flow.FUNC_NAMES for step in steps
-    ), f'not all steps provided are real, only these are: {FUNC_NAMES}'
+    ), f'not all steps provided are real, only these are: {flow.FUNC_NAMES}'
     byte_array = byte_array or bytearray()
     if not isinstance(byte_array, bytearray):
         raise TypeError(f'byte_array must be of type bytearray, provided {type(byte_array)}')

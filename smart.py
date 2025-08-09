@@ -412,7 +412,7 @@ def telemetry_async(
         else:
             df = pd.DataFrame(cdi.values())
         third.upsert_df_to_csv(df, smart_filepath)
-        logging.info('S.M.A.R.T. Telemetry:\n%s', df)
+        logging.info('S.M.A.R.T. Telemetry:\n%s', df.to_string(index=False))
 
         cdi_df = pd.read_csv(smart_filepath)
 
@@ -480,7 +480,7 @@ def telemetry(
             df = pd.DataFrame([cdi[str(disk_number)]])
         else:
             df = pd.DataFrame(cdi.values())
-        logging.info('S.M.A.R.T. Telemetry:\n%s', df)
+        logging.info('S.M.A.R.T. Telemetry:\n%s', df.to_string(index=False))
 
         summary_df = summarize_crystaldiskinfo_df(cdi_df)
         summary_df.to_csv(summary_filepath, index=False)
