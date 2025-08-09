@@ -41,6 +41,33 @@
             ]
         },
         {
+            "name": "app - write_burnin",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "write_burnin",
+                // common
+                "--log-level", "DEBUG", "--no-admin"
+            ]
+        },
+        {
+            "name": "app - read_rand",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "read_rand",
+                "--size", "64mb",
+                "--log-every", "1mb",
+                "--chunk_size", "16",
+                // common
+                "--no-telemetry", "--log-level", "DEBUG",
+            ]
+        },
+        {
             "name": "app - flow: fulpak 1kb, 2x",
             "type": "debugpy",
             "request": "launch",

@@ -1,4 +1,11 @@
 # dead code stuff
+
+```powershell
+# admin
+Get-Disk | Get-StorageReliabilityCounter | Select-Object -Property "*"
+```
+
+
 ```python
 def fill_disk(output_dirpath=OUTPUT_DIRPATH):
     import math

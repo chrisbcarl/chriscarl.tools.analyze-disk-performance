@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import datetime
+import threading
 import multiprocessing
 from typing import List  # noqa: F401
 
@@ -14,9 +15,13 @@ TEMP_DIRPATH = os.path.abspath(TEMP_DIRPATH)
 DRIVE, _ = os.path.splitdrive(TEMP_DIRPATH)
 DATA_FILEPATH = os.path.join(TEMP_DIRPATH, 'data.dat')
 PERF_FILEPATH = os.path.join(TEMP_DIRPATH, 'performance.csv')
-SEARCH_OPTIMAL_FILEPATH = os.path.join(TEMP_DIRPATH, 'search_optimal.csv')
 SUMMARY_FILEPATH = os.path.join(TEMP_DIRPATH, 'summary.csv')
 SMART_FILEPATH = os.path.join(TEMP_DIRPATH, 'smart.csv')
+
+KB = 1024**1
+MB = 1024**2
+GB = 1024**3
+
 VALUE = -1
 DURATION = -1
 ITERATIONS = -1
@@ -24,14 +29,15 @@ FLOW_DURATION = -1
 FLOW_ITERATIONS = 3
 SIZE = -1
 POLL = 15
-RANDOM_READ = -1
+CHUNK_SIZE = KB
+NO_CHEAT = False
 BURN_IN = False
 SEARCH_OPTIMAL = False
 NO_CRYSTALDISKINFO = False
 ALL_DRIVES = False
 NO_TELEMETRY = False
 NO_ADMIN = False
-DELETE = False
+NO_DELETE = False
 # by default none, its too dangerous to set a partition to create without information
 DISK_NUMBERS = []  # type: List[str|int]
 # DEFAULTS = {
@@ -42,7 +48,7 @@ DISK_NUMBERS = []  # type: List[str|int]
 #     'FLOW_ITERATIONS': FLOW_ITERATIONS,
 #     'SIZE': SIZE,
 #     'POLL': POLL,
-#     'RANDOM_READ': RANDOM_READ,
+#     'CHUNK_SIZE': CHUNK_SIZE,
 #     'BURN_IN': BURN_IN,
 #     'SEARCH_OPTIMAL': SEARCH_OPTIMAL,
 #     'NO_CRYSTALDISKINFO': NO_CRYSTALDISKINFO,
@@ -54,12 +60,7 @@ DISK_NUMBERS = []  # type: List[str|int]
 LOG_LEVELS = list(logging._nameToLevel)  # pylint: disable=(protected-access)
 LOG_LEVEL = 'INFO'
 
-KB = 1024**1
-MB = 1024**2
-GB = 1024**3
-LOG_UNIT = 'GB'
-LOG_UNITS = {'GB': GB, 'MB': MB, 'KB': KB}
-LOG_MOD = 8
+LOG_EVERY = 4 * GB
 
 CRYSTALDISKINFO_EXE = 'DiskInfo64.exe' if sys.platform == 'win32' else 'DiskInfo64'
 CRYSTALDISKINFO_TXT = ''
@@ -89,5 +90,9 @@ IGNORE_PARTITIONS = ['A', 'B', 'C']
 
 OPERATIONS = ['perf', 'fill', 'perf+fill', 'loop', 'write', 'perf+write', 'health', 'perf+fill+read', 'smartmon']
 
+WRITE_MODES = ['burnin', 'fulpak']
+WRITE_MODE = WRITE_MODES[0]
+
 # arg defaults
 CPU_COUNT = multiprocessing.cpu_count()
+STOP_EVENT = threading.Event()
