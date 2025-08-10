@@ -24,6 +24,7 @@ Modified:   2024-09-26
 
 Modified:
     2025-08-10 - chrisbcarl - it works and its so nice
+                              fixed a bug where large files that dont match size were always loaded
     2025-08-09 - chrisbcarl - FULL reorganization and its actually 1000% better
                               log manipulation works a treat, still got a ways to go
                               full refactor complete, health and system are the only remaining ones to go

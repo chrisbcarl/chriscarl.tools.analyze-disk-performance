@@ -186,8 +186,8 @@ def create(
         wb.write(byte_array)
 
     logging.info(
-        'created bytearray at "%s" of size %s, first 16 bytes: %s', data_filepath, bytes_to_size(len(byte_array)),
-        byte_array[:16]
+        'created bytearray at "%s" of size %s, first 32 bytes: %s', data_filepath, bytes_to_size(len(byte_array)),
+        byte_array[:32]
     )
     return byte_array
 
@@ -203,7 +203,7 @@ def get_byte_array(
     # type: (Optional[bytearray], str, int, int, bool, threading.Event) -> bytearray
     if isinstance(byte_array, bytearray) and len(byte_array) > 0:
         logging.info(
-            'reusing byte_array of %s from kwarg, first 16 bytes: %s', bytes_to_size(len(byte_array)), byte_array[:16]
+            'reusing byte_array of %s from kwarg, first 32 bytes: %s', bytes_to_size(len(byte_array)), byte_array[:32]
         )
         return byte_array
 
@@ -215,15 +215,21 @@ def get_byte_array(
 
     if os.path.isfile(data_filepath):
         logging.debug('loading file from "%s" of %s', data_filepath, bytes_to_size(os.path.getsize(data_filepath)))
+        size_equal = (size == os.path.getsize(data_filepath) if size != con.SIZE else True)
         with open(data_filepath, 'rb') as rb:
-            byte_array = bytearray(rb.read())
-        size_equal = (size == len(byte_array) if size != con.SIZE else True)
-        values_equal = (all(bte == value for bte in byte_array[:16]) if value != con.VALUE else True)
+            sub_byte_array = bytearray(rb.read(1024))  # read the first bit, if its a megafile we cant load it all...
+        if value != con.VALUE:
+            values_equal = all(bte == value for bte in sub_byte_array[:32])
+        else:
+            # it was random, so see if half the array equals the other half--INSANELY unlikely
+            values_equal = sub_byte_array[:len(sub_byte_array)] == sub_byte_array[len(sub_byte_array):]
         if size_equal and values_equal:
             logging.info(
-                'loaded file from "%s" of %s, first 16 bytes: %s', data_filepath,
-                bytes_to_size(os.path.getsize(data_filepath)), byte_array[:16]
+                'loading file from "%s" of %s, first 32 bytes: %s', data_filepath,
+                bytes_to_size(os.path.getsize(data_filepath)), sub_byte_array[:32]
             )
+            with open(data_filepath, 'rb') as rb:
+                byte_array = bytearray(rb.read())  # read everything
             return byte_array
         else:
             logging.info('stale file from "%s", need to regenerate', data_filepath)
@@ -312,7 +318,9 @@ def write_burnin(
     if not isinstance(byte_array, bytearray):
         raise TypeError(f'byte_array must be of type bytearray, provided {type(byte_array)}!')
     logging.debug('byte_array=%s, data_filepath="%s"', bytes_to_size(len(byte_array)), data_filepath)
-    logging.info('write_burnin with byte_array of %s', bytes_to_size(len(byte_array)))
+    logging.info(
+        'write_burnin with byte_array of %s, first 32 bytes: %s', bytes_to_size(len(byte_array)), byte_array[0:32]
+    )
 
     drive_letter, _ = os.path.splitdrive(data_filepath)
     bytes_written = 0
@@ -330,7 +338,7 @@ def write_burnin(
                     throughput = bytes_written / elapsed
                 du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                    'usage=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
                     bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_written
@@ -343,7 +351,7 @@ def write_burnin(
         throughput = bytes_written / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
+        'usage=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
         bytes_to_size(throughput)
     )
 
@@ -410,7 +418,9 @@ def write_fulpak(
     if not isinstance(byte_array, bytearray):
         raise TypeError(f'byte_array must be of type bytearray, provided {type(byte_array)}!')
     logging.debug('byte_array=%s, data_filepath="%s"', bytes_to_size(len(byte_array)), data_filepath)
-    logging.info('write_fulpak with byte_array of %s', bytes_to_size(len(byte_array)))
+    logging.info(
+        'write_fulpak with byte_array of %s, first 32 bytes: %s', bytes_to_size(len(byte_array)), byte_array[0:32]
+    )
 
     # write the bulk of the data
     drive_letter, _ = os.path.splitdrive(data_filepath)
@@ -432,7 +442,7 @@ def write_fulpak(
                         throughput = bytes_written / elapsed
                     du = psutil.disk_usage(drive_letter)
                     logging.info(
-                        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                        'usage=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
                         bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                     )
                     prior_bytes = bytes_written
@@ -449,7 +459,7 @@ def write_fulpak(
                         throughput = bytes_written / elapsed
                     du = psutil.disk_usage(drive_letter)
                     logging.info(
-                        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                        'usage=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
                         bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                     )
                     prior_bytes = bytes_written
@@ -470,7 +480,7 @@ def write_fulpak(
         throughput = bytes_written / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
+        'usage=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
         bytes_to_size(throughput)
     )
 
@@ -542,7 +552,8 @@ def read_seq(
         bytes_to_size(chunk_size)
     )
     logging.info(
-        'read_seq with byte_array of %s, chunk_size=%s', bytes_to_size(len(byte_array)), bytes_to_size(chunk_size)
+        'read_seq with byte_array of %s, first 32 bytes: %s, chunk_size=%s', bytes_to_size(len(byte_array)),
+        byte_array[0:32], bytes_to_size(chunk_size)
     )
 
     drive_letter, _ = os.path.splitdrive(data_filepath)
@@ -563,7 +574,7 @@ def read_seq(
                     throughput = bytes_read / elapsed
                 du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
+                    'usage=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
                     elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_read
@@ -594,7 +605,7 @@ def read_seq(
         throughput = bytes_read / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
+        'usage=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
         bytes_to_size(throughput)
     )
 
@@ -656,7 +667,8 @@ def read_rand(
         raise TypeError(f'byte_array must be of type bytearray, provided {type(byte_array)}!')
     logging.debug('byte_array=%s, data_filepath="%s"', bytes_to_size(len(byte_array)), data_filepath)
     logging.info(
-        'read_rand with byte_array of %s and chunk_size %s', bytes_to_size(len(byte_array)), bytes_to_size(chunk_size)
+        'read_rand chunk_size %s with byte_array of %s, first 32 bytes: %s', bytes_to_size(chunk_size),
+        bytes_to_size(len(byte_array)), byte_array[0:32]
     )
 
     drive_letter, _ = os.path.splitdrive(data_filepath)
@@ -688,7 +700,7 @@ def read_rand(
                     throughput = bytes_read / elapsed
                 du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
+                    'usage=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
                     elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_read
@@ -713,7 +725,7 @@ def read_rand(
         throughput = bytes_read / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
+        'usage=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
         bytes_to_size(throughput)
     )
 
