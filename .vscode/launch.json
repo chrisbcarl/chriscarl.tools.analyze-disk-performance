@@ -9,18 +9,26 @@
             "justMyCode": true
         },
         {
-            "name": "sequential-write",
+            "name": "app -h",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": ["flow", "-h"]
+        },
+        {
+            "name": "app - create",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
-                // "/tmp", "--mb", "32", "--time", "60"
-                "L:/tmp",
-                "--mb",
-                "32",
-                "--time",
-                "60"
+                "create",
+                "--size", "128mb",
+                "--data-filepath", "Y:/tmp",
+                // who cares
+                "--log-level", "DEBUG",
+                "--no-admin",
             ]
         },
         {
@@ -47,9 +55,9 @@
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
-                "write_burnin",
+                "write_burnin", "--size", "4GB", "--log-every", "16MB", "--chunk-size", "64MB", "--data-filepath", "I:/tmp",
                 // common
-                "--log-level", "DEBUG", "--no-admin"
+                "--log-level", "DEBUG", "--no-telemetry"
             ]
         },
         {
@@ -68,50 +76,18 @@
             ]
         },
         {
-            "name": "app - flow: fulpak 1kb, 2x",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "write", "--size", "1mb", "--value", "69", "--data-filepath", "I:/tmp", "--iterations", "2",
-                // common
-                "--no-admin"
-                // "--log-level", "DEBUG",
-            ]
-        },
-        ///
-        {
             "name": "app - flow",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
-                "flow", "--steps", "write", "read",
+                "flow", "--steps", "create", "write_burnin", "read_seq",
                 "--flow-iterations", "2",
                 // all other steps
-                "--size", "1024",
-                "--value", "69",
-                "--data-filepath", "Y:/tmp",
-                "--iterations", "10",
-                "--burn-in",
+                "--size", "4GB", "--value", "69", "--data-filepath", "I:/tmp", "--log-every", "16MB",
                 // who cares
-                "--log-level", "DEBUG",
-                "--no-crystaldiskinfo",
-            ]
-        },
-        {
-            "name": "app - flow 2",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "flow", "--steps", "write", "read", "telemetry",
-                "--iterations", "10", "--burn-in", "--size", "1kb",
-                "--flow-iterations", "5",
-                "--log-level", "DEBUG", "--no-crystaldiskinfo"
+                "--log-level", "DEBUG", "--no-telemetry",
             ]
         },
         {

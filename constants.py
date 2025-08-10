@@ -28,8 +28,8 @@ ITERATIONS = -1
 FLOW_DURATION = -1
 FLOW_ITERATIONS = 3
 SIZE = -1
-POLL = 15
-CHUNK_SIZE = KB
+POLL = 15.0
+CHUNK_SIZE = MB
 NO_CHEAT = False
 BURN_IN = False
 SEARCH_OPTIMAL = False
@@ -59,8 +59,9 @@ DISK_NUMBERS = []  # type: List[str|int]
 
 LOG_LEVELS = list(logging._nameToLevel)  # pylint: disable=(protected-access)
 LOG_LEVEL = 'INFO'
+LOG_FORMAT = '%(asctime)s - %(levelname)10s - %(funcName)48s - %(message)s'
 
-LOG_EVERY = 4 * GB
+LOG_EVERY = 1 * GB
 
 CRYSTALDISKINFO_EXE = 'DiskInfo64.exe' if sys.platform == 'win32' else 'DiskInfo64'
 CRYSTALDISKINFO_TXT = ''

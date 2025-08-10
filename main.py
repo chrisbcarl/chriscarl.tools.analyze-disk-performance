@@ -25,6 +25,7 @@ Modified:   2024-09-26
 Modified:
     2025-08-09 - chrisbcarl - FULL reorganization and its actually 1000% better
                               log manipulation works a treat, still got a ways to go
+                              full refactor complete, health and system are the only remaining ones to go
     2025-08-07 - chrisbcarl - added create_partitions, delete_partitions
                               added health, now I just need to test
                               fine tuning after running it successfully, added defaults awareness
@@ -63,6 +64,8 @@ Examples:
             >>> --log-level DEBUG
         - adjust how often you see throughput and log messages during i/o
             >>> --log-every 16MB
+        - S.M.A.R.T. frequency
+            >>> --poll 3
 
     - telemetry
         - one drive (the drive of default data_filepath)
@@ -87,7 +90,7 @@ Examples:
             - burnin using a file that has a high throughput in a different drive
                 >>> python main.py write_burnin --data-filepath I:/tmp
             - burnin using a specific file size
-                >>> python main.py write_burnin --size 1GB
+                >>> python main.py write_burnin --size 4GB --log-every 16MB --chunk-size 64MB
         - fulpak (100% of the drive)
             - fulpak using a file that has a high throughput
                 >>> python main.py write_fulpak --data-filepath I:/tmp
@@ -97,14 +100,28 @@ Examples:
     - reading
         - read_seq
             - read_seq writes a file and reads from it ()
-                >>> python main.py read_seq --size 1024 --no-admin
+                >>> python main.py read_seq --size 4GB --chunk-size 16MB --log-every 128MB --no-telemetry
             - read_seq read an existing file w/o telemetry
                 >>> python main.py read_seq `
                 >>>     --data-filepath C/temp/chriscarl.tools.analyze-disk-performance/20250808-2249/data.dat `
                 >>>     --no-telemetry
         - read_rand
             - read_rand writes a 4GB file and reads from it by randomly window hopping in 1MB chunks
-                >>> python main.py read_rand --size 4GB --log-every 512MB --chunk_size 1MB --no-telemetry
+                >>> python main.py read_rand --size 4GB --log-every 512MB --chunk-size 1MB --no-telemetry
+
+    - flow
+        - create + write_burnin + read_seq
+            >>> python main.py flow --steps create write_burnin read_seq read_rand `
+            >>>     --flow-iterations 3 `
+            >>>     --data-filepath I:/tmp --size 4GB --value 69 --chunk-size 64MB --log-every 512MB
+        - create + write_burnin + read_seq: only 1 minutes of this stuff
+            >>> python main.py flow --steps create write_burnin read_seq read_rand `
+            >>>     --flow-duration 60 `
+            >>>     --data-filepath I:/tmp --size 4GB --value 69 --chunk-size 64MB --log-every 512MB
+
+    - benchmarks
+        - health
+            >>> python main.py health
 
 TODO:
     write_burnin needs
@@ -142,378 +159,316 @@ TODO:
 from __future__ import print_function, division
 import os
 import sys
-import copy
-import json
 import pprint
 import string
 import logging
 import inspect
 import argparse
+import threading
+from typing import Dict, List, Any  # noqa: F401
 
 # 3rd party
 
 # app imports
-import constants
+import constants as con
 import smart
 import system
 import flow
-from stdlib import NiceFormatter, size_unit_convert
+import stdlib
 
 SCRIPT_DIRPATH = os.path.abspath(os.path.dirname(__file__))
 
 # i split them up so that during dynamic argparse parser creation they have separate groups
-OPERATION_ARGUMENTS = {
-    'data_filepath': dict(type=str, default=constants.DATA_FILEPATH, help='file that stresses the disk'),
-    'size': dict(type=str, default=constants.SIZE, help='size in bytes, can use human friendly like 1024KB'),
-    'value': dict(type=int, default=constants.VALUE, help='default random, fill with constant value'),
-    'iterations': dict(type=int, default=constants.ITERATIONS, help='repetitions, -1 for infinitely'),
-    'duration': dict(type=float, default=constants.DURATION, help='in seconds, -1 for infinitely'),
+ARGUMENTS = {
+    'data_filepath': dict(type=str, default=con.DATA_FILEPATH, help='file that stresses the disk', argtype='path'),
+    'size': dict(type=str, default=con.SIZE, help='bytes, can use human friendly like 1024KB', argtype='str-int'),
+    'value': dict(type=int, default=con.VALUE, help='default random, fill with constant value', min=0, max=255),
+    'iterations': dict(type=int, default=con.ITERATIONS, help='repetitions, -1 for infinitely'),
+    'duration': dict(type=float, default=con.DURATION, help='in seconds, -1 for infinitely'),
     'burn_in': dict(type=bool, help='default False, rewrite to the same place, not append and fill'),
     'steps': dict(type=str, nargs='+', choices=flow.FUNC_NAMES, required=True, help='run funcs in series'),
     'chunk_size':
-        dict(type=str, default=constants.CHUNK_SIZE, help='default -1, MUST evenly divide size, randomly dart around'),
-    'flow_iterations': dict(type=int, default=constants.FLOW_ITERATIONS, help='repetitions, -1 for infinitely'),
-    'flow_duration': dict(type=float, default=constants.FLOW_DURATION, help='in seconds, -1 for infinitely'),
-    'byte_array': dict(type=bytearray, nargs='+', default=bytearray(), help='BUG: used as part of dynamic programming'),
+        dict(type=str, default=con.CHUNK_SIZE, help='default -1, MUST evenly divide size, friendly', argtype='str-int'),
+    'flow_iterations': dict(type=int, default=con.FLOW_ITERATIONS, help='repetitions, -1 for infinitely'),
+    'flow_duration': dict(type=float, default=con.FLOW_DURATION, help='in seconds, -1 for infinitely'),
+    'flow_no_delete_end': dict(type=bool, help='for convenience, --no-delete is set low for subflows, force high?'),
+    'byte_array': dict(type=bytearray, default=None, help='WARNING: cannot be passed via cli'),
     'ignore_partitions':
-        dict(type=str, nargs='*', default=constants.IGNORE_PARTITIONS, help='if known partitions, ignore these'),
-    'include_partitions': dict(type=str, nargs='*', default=[], help='override ignore, include only these'),
-    'disk_numbers': dict(type=int, nargs='*', default=constants.DISK_NUMBERS, help='if known disk numbers, use these'),
-    'disk_number_to_letter_dict': dict(type=str, help='pass as string, ex) {"1": "D:"}'),
-    'log_every': dict(type=str, default='4GB', help='i/o log frequency, every X bytes'),
+        dict(type=str, nargs='*', default=con.IGNORE_PARTITIONS, help='if known partitions, ignore these'),
+    'include_partitions':
+        dict(
+            type=str, nargs='*', default=[], choices=string.ascii_uppercase, help='override ignore, include only these'
+        ),
+    'disk_numbers': dict(type=int, nargs='*', default=con.DISK_NUMBERS, help='if known disk numbers, use these'),
+    'disk_number_to_letter_dict': dict(type=str, help='pass as string, ex) {"1": "D:"}', argtype='json'),
+    'log_every': dict(type=str, default='4GB', help='i/o log frequency, every X bytes', argtype='str-int'),
     'no_delete': dict(type=bool, help='default False, after operation, self-cleanup'),
-}
-TELEMETRY_ARGUMENTS = {
+    'no_cheat': dict(type=bool, help='default False, if True, dont apply this trick: if size > 1MB, simply repeat 1MB'),
+    'stop_event':
+        dict(type=threading.Event, default=con.STOP_EVENT, help='WARNING: cannot be passed via cli', argtype='lock'),
+    # telemetry
     'all_drives': dict(type=bool, help='if enabled, it queries telemetry from all drives, rather than the one'),
-    'poll': dict(type=float, default=constants.POLL, help='telemetry poll poll'),
+    'poll': dict(type=float, default=con.POLL, help='telemetry poll poll'),
     'no_telemetry': dict(type=bool, help='skip telemetry entirely'),
     'no_admin': dict(type=bool, help='do what you can without admin'),
     'no_crystaldiskinfo': dict(type=bool, help='if disabled, you can run without admin!'),
-    'data_filepath': dict(type=str, default=constants.DATA_FILEPATH, help='file that stresses the disk'),
-    'smart_filepath': dict(type=str, default=constants.SMART_FILEPATH, help='dump S.M.A.R.T. from CrystalDiskInfo.'),
-    'summary_filepath': dict(type=str, default=constants.SUMMARY_FILEPATH, help='afteraction summary'),
-    'log_level': dict(type=str, default=constants.LOG_LEVEL, choices=constants.LOG_LEVELS, help='log level'),
-}
-ARGUMENTS = {'operation': OPERATION_ARGUMENTS, 'telemetry': TELEMETRY_ARGUMENTS}
+    'smart_filepath':
+        dict(type=str, default=con.SMART_FILEPATH, help='dump S.M.A.R.T. from CrystalDiskInfo.', argtype='path'),
+    'summary_filepath': dict(type=str, default=con.SUMMARY_FILEPATH, help='afteraction summary', argtype='path'),
+    'log_level': dict(type=str, default=con.LOG_LEVEL, choices=con.LOG_LEVELS, help='log level'),
+    'log_format': dict(type=str, default=con.LOG_FORMAT, help='log format'),
+}  # type: Dict[str, dict]
+ARGUMENT_TYPES = {
+    # special
+    'str-int': [],
+    'json': [],
+    'path': [],
+    'lock': [],
+    # choices
+    'choice': [],
+    'choices': [],
+    # numeric
+    'pos': [],
+    'range': [],
+    # the rest
+    'optional': [],
+    'list': [],
+    'singleton': [],
+}  # type: Dict[str, List[str]]
+for k, v in ARGUMENTS.items():
+    argtype = v.get('argtype', '')
+    if argtype:
+        if argtype not in ARGUMENT_TYPES:
+            raise NotImplementedError(f'argtype {argtype} not accounted for!')
+        ARGUMENT_TYPES[argtype].append(k)
+        continue
+    if 'choices' in v:
+        if 'nargs' not in v:
+            ARGUMENT_TYPES['choice'].append(k)
+            continue
+        else:
+            ARGUMENT_TYPES['choices'].append(k)
+            continue
+
+    if v['type'] in (int, float):
+        if 'min' in v and 'max' in v:
+            ARGUMENT_TYPES['range'].append(k)
+            continue
+        elif v.get('default', None) == -1:
+            ARGUMENT_TYPES['pos'].append(k)
+            continue
+
+    if v.get('default', 'asdfasdfasdf') is None:
+        ARGUMENT_TYPES['optional'].append(k)
+    elif v.get('nargs'):
+        ARGUMENT_TYPES['list'].append(k)
+    else:
+        ARGUMENT_TYPES['singleton'].append(k)
+ARGUMENT_TO_TYPE = {val: key for key, lst in ARGUMENT_TYPES.items() for val in lst}
+TELEMETRY_SIGNATURE = inspect.signature(smart.telemetry_thread)
+TELEMETRY_PARAMETERS = TELEMETRY_SIGNATURE.parameters
 
 
-def validate_kwargs(
-    args,
-    func=flow,
-    # members of lists
-    log_level=constants.LOG_LEVEL,
-    # numbers
-    value=constants.VALUE,
-    size=constants.SIZE,
-    iterations=constants.ITERATIONS,
-    flow_iterations=constants.FLOW_ITERATIONS,
-    duration=constants.DURATION,
-    flow_duration=constants.FLOW_DURATION,
-    poll=constants.POLL,
-    chunk_size=constants.CHUNK_SIZE,
-    log_every=constants.LOG_EVERY,
-    # files
-    data_filepath=constants.DATA_FILEPATH,
-    summary_filepath=constants.SUMMARY_FILEPATH,
-    smart_filepath=constants.SMART_FILEPATH,
-    # lists
-    steps=None,
-    byte_array=None,
-    ignore_partitions=None,
-    include_partitions=None,
-    disk_numbers=None,
-    # dicts
-    disk_number_to_letter_dict=None,
-    # bools
-    no_optimizations=False,
-    burn_in=constants.BURN_IN,
-    no_crystaldiskinfo=constants.NO_CRYSTALDISKINFO,
-    all_drives=constants.ALL_DRIVES,
-    no_telemetry=constants.NO_TELEMETRY,
-    no_admin=constants.NO_ADMIN,
-    no_delete=constants.NO_DELETE,
-):
-    if func not in flow.FUNCS:
-        raise KeyError(f'func {func!r} does not exist, use one of {flow.FUNCS}!')
-    if log_level not in constants.LOG_LEVELS:
-        raise KeyError(f'log_level {log_level!r} does not exist, choose one of {constants.LOG_LEVELS}!')
+def validate_kwargs(args):
+    # type: (argparse.Namespace) -> None
+    kwargs = vars(args)
+    for argument, v in kwargs.items():
+        if argument == 'func':
+            assert kwargs[argument] in flow.FUNCS, 'this should never happen...'
+            continue
 
-    # numbers
-    if value != -1:
-        if value < 0 and 255 < value:
-            raise ValueError('value must be a value between [0,255] or -1')
-    if isinstance(size, str):
-        try:
-            size = int(size)
-        except ValueError:
-            size = size_unit_convert(size)
-        args.size = size
-    if size != constants.SIZE and size <= 0:
-        raise ValueError('size must be a postive int, are you nuts?')
-    if iterations < constants.ITERATIONS:
-        raise ValueError('iterations must be a postive num (or -1), are you nuts?')
-    if flow_iterations != -1 and flow_iterations <= 0:
-        raise ValueError('flow_iterations must be a postive num (or -1), are you nuts?')
-    if duration != constants.DURATION and duration <= 0:
-        raise ValueError('duration must be a postive num (or -1), are you nuts?')
-    if flow_duration != constants.FLOW_DURATION and flow_duration <= 0:
-        raise ValueError('flow_duration must be a postive num (or -1), are you nuts?')
-    if poll < 0:
-        raise ValueError('poll must be positive!')
-    if isinstance(chunk_size, str):
-        try:
-            chunk_size = int(chunk_size)
-        except ValueError:
-            chunk_size = size_unit_convert(chunk_size)
-        args.chunk_size = chunk_size
-    if chunk_size != constants.CHUNK_SIZE and chunk_size <= 0:
-        raise ValueError('chunk_size must be positive!')
-    if isinstance(log_every, str):
-        try:
-            log_every = int(log_every)
-        except ValueError:
-            log_every = size_unit_convert(log_every)
-        args.log_every = log_every
-    if log_every != constants.LOG_EVERY and log_every <= 0:
-        raise ValueError('log_every must be a postive int, are you nuts?')
+        argument_type = ARGUMENT_TO_TYPE[argument]
+        argument_kwargs = ARGUMENTS[argument]
 
-    # files
-    for filepath in [data_filepath, summary_filepath, smart_filepath]:
-        if not os.path.isdir(os.path.dirname(filepath)):
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        v = kwargs[argument]
+        type_ = argument_kwargs.get('type', None)
+        default = argument_kwargs.get('default', None)
+        if argument_type == 'str-int':
+            value = stdlib.validate_str_int(argument, v, default=default)
+        elif argument_type == 'json':
+            value = stdlib.validate_json(argument, v)
+        elif argument_type == 'path':
+            value = stdlib.validate_path(v)
+        elif argument_type == 'lock':
+            # contains dangerous objects like unpicklables and concurrent primitives
+            value = default or type_()
+        elif argument_type == 'choice':
+            value = stdlib.validate_choice(argument, v, argument_kwargs['choices'])
+        elif argument_type == 'choices':
+            value = stdlib.validate_choices(argument, v, argument_kwargs['choices'])
+        elif argument_type == 'pos':
+            value = stdlib.validate_positive(argument, v, default=default)
+        elif argument_type == 'range':
+            value = stdlib.validate_range(argument, v, argument_kwargs['min'], argument_kwargs['max'], default=default)
+        elif argument_type == 'optional':
+            value = stdlib.validate_optional(argument, v, type_)
+        elif argument_type == 'list':
+            value = stdlib.validate_list(argument, v, type_)
+        elif argument_type == 'singleton':
+            value = stdlib.validate_singleton(argument, v, type_)
+        else:
+            raise NotImplementedError(f'validation of argument_type {argument_type!r} unaccounted for!')
+        setattr(args, argument, value)
 
-    # lists
-    steps = steps or []
-    if not isinstance(steps, list):
-        raise TypeError(f'steps must be of type bool, provided {type(steps)}')
-    assert all(
-        step in flow.FUNC_NAMES for step in steps
-    ), f'not all steps provided are real, only these are: {flow.FUNC_NAMES}'
-    byte_array = byte_array or bytearray()
-    if not isinstance(byte_array, bytearray):
-        raise TypeError(f'byte_array must be of type bytearray, provided {type(byte_array)}')
-    if isinstance(ignore_partitions, list):
-        for i, ignore_partition in enumerate(ignore_partitions):
-            if ignore_partition not in string.ascii_uppercase:
-                raise ValueError(f'ignore_partition {i + 1} {ignore_partition!r} not in expected possibilities!')
-    if isinstance(include_partitions, list):
-        for i, include_partition in enumerate(include_partitions):
-            if include_partition not in string.ascii_uppercase:
-                raise ValueError(f'include_partition {i + 1} {include_partition!r} not in expected possibilities!')
-    if isinstance(disk_numbers, list):
-        for i, disk_number in enumerate(disk_numbers):
-            fail = False
-            try:
-                int(disk_number)
-            except ValueError:
-                fail = True
-            if fail:
-                raise ValueError(f'disk_number {i + 1} is not an int!')
 
-    # dicts
-    if disk_number_to_letter_dict:
-        disk_number_to_letter_dict = json.loads(disk_number_to_letter_dict)
-        args.disk_number_to_letter_dict = disk_number_to_letter_dict
+def post_process_kwargs(args):
+    # type: (argparse.Namespace) -> None
+    kwargs = vars(args)
+    if 'flow_no_delete_end' in kwargs:
+        if kwargs['flow_no_delete_end']:
+            logging.debug('setting no_delete to False thanks to flow_no_delete_end True')
+            kwargs['no_delete'] = False
+        else:
+            logging.debug('setting no_delete to True thanks to flow_no_delete_end False')
+            kwargs['no_delete'] = True
+        setattr(args, 'no_delete', kwargs['no_delete'])
 
-    # bools
-    if not isinstance(no_optimizations, bool):
-        raise TypeError(f'no_optimizations must be of type bool, provided {type(no_optimizations)}')
-    if not isinstance(burn_in, bool):
-        raise TypeError(f'burn_in must be of type bool, provided {type(burn_in)}')
-    if not isinstance(no_crystaldiskinfo, bool):
-        raise TypeError(f'no_crystaldiskinfo must be of type bool, provided {type(no_crystaldiskinfo)}')
-    if not isinstance(all_drives, bool):
-        raise TypeError(f'all_drives must be of type bool, provided {type(all_drives)}')
-    if not isinstance(no_telemetry, bool):
-        raise TypeError(f'no_telemetry must be of type bool, provided {type(no_telemetry)}')
-    if not isinstance(no_admin, bool):
-        raise TypeError(f'no_admin must be of type bool, provided {type(no_admin)}')
-    if not isinstance(no_delete, bool):
-        raise TypeError(f'no_delete must be of type bool, provided {type(no_delete)}')
+
+def config(log_format=con.LOG_FORMAT, log_level=con.LOG_LEVEL, **kwargs):
+    # type: (str, str, Any) -> None
+    logging.basicConfig(format=log_format, level=log_level, stream=sys.stdout, force=True)
+
+
+CONFIG_PARAMETERS = inspect.signature(config).parameters
+
+# final developer sanity check
+ALLOW_KIND = {
+    inspect._POSITIONAL_OR_KEYWORD,  # type: ignore
+}  # SKIP_KIND = (inspect._VAR_POSITIONAL, inspect._VAR_KEYWORD)
+_ALL_FUNCS = flow.FUNCS + [config]
+for _func in _ALL_FUNCS:
+    _sig = inspect.signature(_func)
+    for _k in _sig.parameters:
+        if _k not in ARGUMENTS and stdlib.is_optional_with_default(_sig, _k):
+            raise NotImplementedError(f'argument {_k!r} from {_func} not accounted for in ARGUMENTS!')
+
+
+def add_argument_to_group_by_func(argument, group, parameters, prepend='--', include_underscore=False):
+    argparse_kwargs = ARGUMENTS[argument]
+    argparse_kwargs = {k: v for k, v in argparse_kwargs.items()}  # copy.deepcopy(argparse_kwargs)
+
+    name_or_flags = []
+    name_or_flag = f'{prepend}{argument}'
+    if '_' in name_or_flag:
+        name_or_flags.append(f'{name_or_flag.replace("_", "-")}')
+        if include_underscore:
+            name_or_flags.append(f'{name_or_flag}')  # dont include underscore --flag_s
+    else:
+        name_or_flags.append(f'{name_or_flag}')
+
+    if 'default' in argparse_kwargs and argument in parameters:
+        default = argparse_kwargs['default']
+        func_default = parameters[argument].default
+        if default != func_default:
+            argparse_kwargs['default'] = func_default
+
+    if argparse_kwargs['type'] is bool:
+        del argparse_kwargs['type']
+        argparse_kwargs['action'] = 'store_true'
+    add_argument_kwargs = {k: v for k, v in argparse_kwargs.items() if k in stdlib.ARGPARSE_ADD_ARGUMENT_VAROPTIONAL}
+    try:
+        group.add_argument(*name_or_flags, **add_argument_kwargs)
+    except argparse.ArgumentError as ae:
+        aestr = str(ae)
+        if 'conflicting option strings' in aestr:
+            pass
 
 
 def main():
-    parser = argparse.ArgumentParser(prog=constants.APP_NAME, description=__doc__, formatter_class=NiceFormatter)
+    parser = argparse.ArgumentParser(prog=con.APP_NAME, description=__doc__, formatter_class=stdlib.NiceFormatter)
     operations = parser.add_subparsers(help='different operations we can do')
+
     for func in flow.FUNCS:
         op = operations.add_parser(
             func.__name__,
             help=func.__doc__.strip().splitlines()[1].strip(),  # just under Description:
             description=func.__doc__,
-            formatter_class=NiceFormatter,
+            formatter_class=stdlib.NiceFormatter,
         )
         op.set_defaults(func=func)
 
-        if func is flow:
-            # this one is especially meta because it "consumes" all kwargs, so we have to give it ALL arguments
-            for group_name, argdict in ARGUMENTS.items():
-                group = op.add_argument_group(group_name)
-                for key, argparse_kwargs in argdict.items():
-                    names = []
-                    if '_' in key:
-                        names.append(f'--{key.replace("_", "-")}')
-                        names.append(f'--{key}')
-                    else:
-                        names.append(f'--{key}')
-                    try:
-                        if argparse_kwargs['type'] is bool:
-                            group.add_argument(
-                                *names,
-                                action='store_true',
-                                **{
-                                    key: value
-                                    for key, value in argparse_kwargs.items() if key != 'type'
-                                }
-                            )
-                        else:
-                            group.add_argument(*names, **argparse_kwargs)
-                    except argparse.ArgumentError as ae:
-                        aestr = str(ae)
-                        if 'conflicting option strings' in aestr:
-                            pass
-
-        else:
-            # all other functions are "normal" and follow other similar rules
-            group = op.add_argument_group('operation')
-            signature = inspect.signature(func)
-            for key in signature.parameters:
-                # print(func, key)
-                argparse_kwargs = {k: v for k, v in OPERATION_ARGUMENTS.get(key, {}).items()}  # copy
-                if 'default' in argparse_kwargs:
-                    default = argparse_kwargs['default']
-                    func_default = signature.parameters[key].default
-                    if default != func_default:
-                        argparse_kwargs['default'] = func_default
-                if not argparse_kwargs:
+        if func is flow.flow:
+            # forcibly graft on every single variant of parameter for every flow option
+            for flow_func in flow.FUNCS:
+                if flow_func is flow.flow:
                     continue
-                names = []
-                if '_' in key:
-                    names.append(f'--{key.replace("_", "-")}')
-                    names.append(f'--{key}')
-                else:
-                    names.append(f'--{key}')
-                if argparse_kwargs['type'] is bool:
-                    group.add_argument(
-                        *names,
-                        action='store_true',
-                        **{
-                            key: value
-                            for key, value in argparse_kwargs.items() if key != 'type'
-                        }
-                    )
-                else:
-                    group.add_argument(*names, **argparse_kwargs)
-
-            group = op.add_argument_group('telemetry')
-            signature = inspect.signature(smart.telemetry_thread)
-            for key, argparse_kwargs in TELEMETRY_ARGUMENTS.items():
-                argparse_kwargs = copy.deepcopy(argparse_kwargs)
-                # see if the function defines a special value instead, and use that.
-                if 'default' in argparse_kwargs and key in signature.parameters:
-                    default = argparse_kwargs['default']
-                    func_default = signature.parameters[key].default
-                    if default != func_default:
-                        argparse_kwargs['default'] = func_default
-                names = []
-                if '_' in key:
-                    names.append(f'--{key.replace("_", "-")}')
-                    names.append(f'--{key}')
-                else:
-                    names.append(f'--{key}')
-                try:
-                    if argparse_kwargs['type'] is bool:
-                        group.add_argument(
-                            *names,
-                            action='store_true',
-                            **{
-                                key: value
-                                for key, value in argparse_kwargs.items() if key != 'type'
-                            }
+                group = op.add_argument_group(f'flow - {flow_func.__name__}')
+                parameters = inspect.signature(flow_func).parameters
+                for argument in ARGUMENTS:
+                    if argument in parameters:
+                        add_argument_to_group_by_func(
+                            # prepend=f'--{flow_func.__name__}-'
+                            argument,
+                            group,
+                            parameters,
+                            prepend='--',
+                            include_underscore=False
                         )
-                    else:
-                        group.add_argument(*names, **argparse_kwargs)
-                except argparse.ArgumentError as ae:
-                    aestr = str(ae)
-                    if 'conflicting option strings' in aestr:
-                        pass
 
-            # for key in signature.parameters:
-            #     # print(func, key)
-            #     # if key in OPERATION_ARGUMENTS:
-            #     #     continue
-            #     if func == write:
-            #         print('plx')
-            #     if key not in TELEMETRY_ARGUMENTS:
-            #         continue
-            #     argparse_kwargs = {k: v for k, v in TELEMETRY_ARGUMENTS.get(key, {}).items()}  # copy
-            #     if 'default' in argparse_kwargs:
-            #         default = argparse_kwargs['default']
-            #         func_default = signature.parameters[key].default
-            #         if default != func_default:
-            #             argparse_kwargs['default'] = func_default
-            #     if not argparse_kwargs:
-            #         continue
-            #     names = []
-            #     if '_' in key:
-            #         names.append(f'--{key.replace("_", "-")}')
-            #         names.append(f'--{key}')
-            #     else:
-            #         names.append(f'--{key}')
-            #     try:
-            #         if argparse_kwargs['type'] is bool:
-            #             group.add_argument(
-            #                 *names,
-            #                 action='store_true',
-            #                 **{
-            #                     key: value
-            #                     for key, value in argparse_kwargs.items() if key != 'type'
-            #                 }
-            #             )
-            #         else:
-            #             group.add_argument(*names, **argparse_kwargs)
-            #     except argparse.ArgumentError as ae:
-            #         aestr = str(ae)
-            #         if 'conflicting option strings' in aestr:
-            #             pass
+        # all functions are "normal" and follow the same rules for self-discovery
+        operation_parameters = inspect.signature(func).parameters
+        operation_group = op.add_argument_group('operation')
+        telemetry_group = op.add_argument_group('telemetry')
+        config_group = op.add_argument_group('config')
+
+        for argument in ARGUMENTS:
+            # in case we have to modify, and deepcopy doesnt work on lock objects
+            exists_in_one_of_three_places = False
+            if argument in operation_parameters:
+                group = operation_group
+                parameters = operation_parameters
+                if argument in parameters:
+                    exists_in_one_of_three_places = True
+            elif argument in TELEMETRY_PARAMETERS:
+                group = telemetry_group
+                parameters = TELEMETRY_PARAMETERS
+                if argument in parameters:
+                    exists_in_one_of_three_places = True
+            else:
+                group = config_group
+                parameters = CONFIG_PARAMETERS
+                if argument in parameters:
+                    exists_in_one_of_three_places = True
+            if not exists_in_one_of_three_places:
+                continue
+
+            add_argument_to_group_by_func(argument, group, parameters, prepend='--', include_underscore=False)
 
     args = parser.parse_args()
     func = args.func
 
+    validate_kwargs(args)
     kwargs = vars(args)
-    validate_kwargs(args, **kwargs)  # update by side effect
-    logging.basicConfig(
-        format='%(asctime)s - %(levelname)10s - %(funcName)48s - %(message)s',
-        level=args.log_level,
-        stream=sys.stdout,
-        force=True
-    )
+    config(**kwargs)  # update by side effect
+    post_process_kwargs(args)  # update by side effect
     kwargs = vars(args)
-    logging.debug(pprint.pformat(kwargs, indent=2))
+    logging.debug('kwargs:\n%s', pprint.pformat(kwargs, indent=2))
 
-    telemetry_signature = inspect.signature(smart.telemetry_thread)
-    telemetry_thread_kwargs = {k: kwargs[k] for k in telemetry_signature.parameters if k in TELEMETRY_ARGUMENTS}
-    telemetry_thread_kwargs.update({k: kwargs[k] for k in telemetry_signature.parameters if k in OPERATION_ARGUMENTS})
-    logging.debug('telemetry_thread_kwargs: \n%s', pprint.pformat(telemetry_thread_kwargs, indent=2))
+    telemetry_thread_kwargs = {
+        k: kwargs[k]
+        for k in TELEMETRY_PARAMETERS if stdlib.is_optional_with_default(TELEMETRY_SIGNATURE, k)
+    }
+    logging.debug('telemetry_thread_kwargs:\n%s', pprint.pformat(telemetry_thread_kwargs, indent=2))
 
-    func_signature = inspect.signature(func)
-    func_kwargs = {k: kwargs[k] for k in func_signature.parameters if k in OPERATION_ARGUMENTS}
-    func_kwargs.update({k: kwargs[k] for k in func_signature.parameters if k in TELEMETRY_ARGUMENTS})
-    logging.debug('func_kwargs: \n%s', pprint.pformat(func_kwargs, indent=2))
+    # func_signature = inspect.signature(func)
+    # func_parameters = func_signature.parameters
+    # func_kwargs = {k: kwargs[k] for k in func_parameters if stdlib.is_optional_with_default(func_signature, k)}
+    # logging.debug('func_kwargs: \n%s', pprint.pformat(func_kwargs, indent=2))
 
-    stop_event = constants.STOP_EVENT
+    stop_event = con.STOP_EVENT
     success = True
     thread = None
     try:
         if not any(
             [
-                func is flow and 'telemetry' in args.steps,
+                func is flow.flow and 'telemetry' in args.steps,
                 func in {smart.telemetry, system.create_partitions, system.delete_partitions},
             ]
         ):
             thread = smart.telemetry_thread(**telemetry_thread_kwargs)
 
         logging.info('starting %r', func.__name__)
-        func(**func_kwargs)
+        func(**kwargs)  # **func_kwargs
     except KeyboardInterrupt:
         logging.warning('ctrl + c detected!')
         logging.debug('ctrl + c detected!', exc_info=True)

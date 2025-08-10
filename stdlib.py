@@ -1,8 +1,10 @@
 # stdlib
 import os
 import time
-import argparse
+import json
+import inspect
 import logging
+import argparse
 import threading  # noqa: F401
 from collections import OrderedDict
 from typing import List, Optional, Callable, Any  # noqa: F401
@@ -128,11 +130,16 @@ def bytes_to_size(size, upper=True, space=True):
 
 def countdown(duration, stop_event):
     # type: (float|int, threading.Event) -> bool
+    if duration < 0:
+        duration = float('inf')
     start = time.time()
     while time.time() - start < duration:
         if stop_event.is_set():
             break
         time.sleep(0.01)
+    elapsed = time.time() - start
+    if elapsed > duration:
+        logging.warning('Duration %0.3f exceeded!', elapsed)
     stop_event.set()
     return True
 
@@ -151,6 +158,8 @@ RESULT_BEHAVIORS = ['singleton', 'accumulate', 'append', 'map']
 
 def loop_or_elapsed(
     func,
+    args,
+    kwargs,
     description,
     cleanup=None,
     result_behavior='singleton',
@@ -158,7 +167,7 @@ def loop_or_elapsed(
     duration=constants.DURATION,
     stop_event=constants.STOP_EVENT,
 ):
-    # type: (Callable, str, Optional[Callable], str, int, float|int, threading.Event) -> Any|list|dict
+    # type: (Callable, Any, dict, str, Optional[Callable], str, int, float|int, threading.Event) -> Any|list|dict
     '''
     Description:
         run function in a loop until EITHER iterations OR duration exceeds, whichever comes FIRST
@@ -166,6 +175,10 @@ def loop_or_elapsed(
     Arguments:
         func: Callable
             function to run
+        args: *
+            func vararguments
+        kwargs: *
+            func kwarguments
         description: str
             description which gets logged when an iteration passes or a duration passes
         result_behavior: str
@@ -211,7 +224,9 @@ def loop_or_elapsed(
                 '%r loop until either %0.3f > %0.3f sec OR %d / %d', description, elapsed, duration, iteration,
                 iterations
             )
-            result = func()
+            # sub_kwargs = {k: v for k, v in kwargs.items() if k.startswith(f'{func.__name__}_')}
+            sub_kwargs = {k: v for k, v in kwargs.items()}
+            result = func(*args, **sub_kwargs)
             if result_behavior == 'singleton':
                 res = result
             elif result_behavior == 'accumulate':
@@ -251,6 +266,8 @@ def loop_or_elapsed(
 
 def loop(
     func,
+    args,
+    kwargs,
     description,
     cleanup=None,
     result_behavior='singleton',
@@ -258,7 +275,7 @@ def loop(
     duration=constants.DURATION,
     stop_event=constants.STOP_EVENT,
 ):
-    # type: (Callable, str, Optional[Callable], str, int, float|int, threading.Event) -> Any|list|dict
+    # type: (Callable, Any, dict, str, Optional[Callable], str, int, float|int, threading.Event) -> Any|list|dict
     '''
     Description:
         run a function in a loop until iterations or duration exceeds
@@ -268,6 +285,10 @@ def loop(
     Arguments:
         func: Callable
             function to run
+        args: *
+            func vararguments
+        kwargs: *
+            func kwarguments
         description: str
             description which gets logged when an iteration passes or a duration passes
         result_behavior: str
@@ -304,7 +325,7 @@ def loop(
             logging.info('%r will run until iterations exceeded %d', description, iterations)
             for iteration in range(1, iterations + 1):
                 logging.info('%r loop %d / %d', description, iteration, iterations)
-                result = func()
+                result = func(*args, **kwargs)
                 if result_behavior == 'singleton':
                     res = result
                 elif result_behavior == 'accumulate':
@@ -324,7 +345,7 @@ def loop(
             while not stop_event.is_set():
                 elapsed = time.time() - start
                 logging.info('%r duration %0.3f / %0.3f sec', description, elapsed, duration)
-                result = func()
+                result = func(*args, **kwargs)
                 if result_behavior == 'singleton':
                     res = result
                 elif result_behavior == 'accumulate':
@@ -343,7 +364,7 @@ def loop(
             elapsed = time.time() - start
             while True:
                 logging.info('%r loop inf, elapsed: %0.3f sec, iteration %d', description, elapsed, iteration)
-                result = func()
+                result = func(*args, **kwargs)
                 if result_behavior == 'singleton':
                     res = result
                 elif result_behavior == 'accumulate':
@@ -369,3 +390,91 @@ def loop(
             cleanup()
 
         return res
+
+
+def validate_singleton(name, value, type_):
+    if not isinstance(value, type_):
+        raise TypeError(f'{name} must be of type {type_}, provided {type(value)}')
+    return value
+
+
+def validate_list(name, value, type_):
+    if not isinstance(value, list):
+        raise TypeError(f'{name} must be of type {list}, provided {type(value)}')
+    for i, ele in enumerate(value):
+        validate_singleton(f'{name} {i} / {len(value)}', ele, type_)
+    return value
+
+
+def validate_optional(name, value, type_):
+    value = value or type_()
+    return validate_singleton(name, value, type_)
+
+
+def validate_choice(name, value, choices):
+    if value not in choices:
+        raise KeyError(f'{name} {value!r} does not exist, use one of {choices}!')
+    return value
+
+
+def validate_choices(name, value, choices):
+    if isinstance(value, list):
+        for i, v in enumerate(value):
+            if v not in choices:
+                raise ValueError(f'{name} {i + 1} {choices!r} not expected, use one of {choices}!')
+    return value
+
+
+def validate_positive(name, value, default=-1):
+    if value != default and value <= 0:
+        raise ValueError(f'{name} must be a postive int if non-default {default}!')
+    return value
+
+
+def validate_range(name, value, lo, hi, default=-1):
+    if value != -1:
+        if value < lo and hi < value:
+            raise ValueError(f'{name} must be a value between [{lo},{hi}] or {default}!')
+    return value
+
+
+def validate_str_int(name, value, default=-1):
+    if isinstance(value, str):
+        try:
+            numeric = int(value)
+        except ValueError:
+            numeric = size_unit_convert(value)
+    else:
+        numeric = value
+    if numeric != default and numeric <= 0:
+        raise ValueError(f'{name} must be positive!')
+
+    return numeric
+
+
+def validate_json(name, value):
+    try:
+        return json.loads(value)
+    except Exception as ex:
+        raise ValueError(f'{name} is a malformed string!') from ex
+
+
+def validate_path(value):
+    if not os.path.isdir(os.path.dirname(value)):
+        os.makedirs(os.path.dirname(value), exist_ok=True)
+    return abspath(value)
+
+
+ARGPARSE_ADD_ARGUMENT_VAROPTIONAL = [
+    'action', 'nargs', 'const', 'default', 'type', 'choices', 'required', 'help', 'metavar', 'dest', 'deprecated'
+]
+
+
+def is_optional_with_default(func, name):
+    # type: (Callable|inspect.Signature, str) -> bool
+    if callable(func):
+        sig = inspect.signature(func)
+    else:
+        sig = func
+    param = sig.parameters[name]
+    return param.kind == inspect._POSITIONAL_OR_KEYWORD and param.default != inspect._empty  # type: ignore

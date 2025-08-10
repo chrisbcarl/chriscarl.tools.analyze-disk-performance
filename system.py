@@ -25,7 +25,7 @@ def admin_detect():
 
 
 def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions=None):
-    # type: (List[str], Optional[List[str]]) -> List[str]
+    # type: (List[str], Optional[List[str]]) -> List[str|int]
     '''
     Description:
         Look through all partitions and remove them so the disks are raw
@@ -34,17 +34,17 @@ def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_par
         ignore_partitions: List[str]
             Ex) ['C']
             If you know of partitions youd like to avoid ahead of time, maybe avoid deleting them...
-        include_partitions: List[str]
+        include_partitions: Optional[List[str]]
             If you know which to delete, delete only those, override ignore_partitions
 
     Returns:
-        List[str]
+        List[str|int]
             list of disk numbers as readable by CrystalDiskMark and Windows Disk Utility
     '''
     if admin_detect() != 0:
         raise RuntimeError('Must be run as administrator or sudo!')
 
-    disk_numbers = []
+    disk_numbers = []  # type: List[str|int]
     if not include_partitions:
         # get all partitions
         read_partitions_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\read-partitions.ps1")
@@ -81,7 +81,7 @@ def create_partitions(disk_numbers=constants.DISK_NUMBERS):
         Go through any raw disk and give them a partition, returning a dict of number: letter
 
     Arguments:
-        disk_numbers: List[int]
+        disk_numbers: List[str|int]
             Ex) [0]
             If you know the disk numbers ahead of time, provide them
             else, any raw disk will be partitioned and assigned a drive letter

@@ -5,7 +5,8 @@ import time
 import logging
 import datetime
 import subprocess
-from typing import Any, Tuple, Optional  # noqa: F401
+import threading  # noqa: F401
+from typing import Any, List, Optional  # noqa: F401
 
 # third party
 
@@ -27,28 +28,50 @@ def health(
     # flow
     iterations=3,
     duration=constants.DURATION,
-    # write
-    burn_in=constants.BURN_IN,
     # read
     chunk_size=constants.CHUNK_SIZE,
     # general/telemetry
+    poll=constants.POLL,
     log_level=constants.LOG_LEVEL,
     log_every=constants.LOG_EVERY,
     stop_event=constants.STOP_EVENT,
-    poll=constants.POLL,
+    **kwargs
 ):
+    # type: (List[str], Optional[List[str]], int, int, int, float|int, int, float|int, str, int, threading.Event, Any) -> None  # noqa: E501
     '''
     Description:
-        Launch a pre-determined flow upon every relevant disk. WARNING: DO NOT RUN IN HIGHLY POPULATED PCs!
+        Launch a pre-determined flow upon every relevant disk. WARNING: DO NOT RUN IN A HIGHLY POPULATED PC!
 
     Arguments:
-        log_unit: str
-            default GB, frequency of i/o that gets logged by units
-        log_mod: int
-            default 8, frequency of i/o that gets logged by EVERY OTHER units
+        ignore_partitions: List[str]
+            Ex) ['C']
+            If you know of partitions youd like to avoid ahead of time, maybe avoid deleting them...
+        include_partitions: Optional[List[str]]
+            If you know which to delete, delete only those, override ignore_partitions
+        size: int
+            -1 to auto-determine by testing a few sizes, else, size in in bytes to repeat or burnin
+        value: int
+            -1 for random, else, repeat the same value for all bytes
+        iterations: int
+            -1 for loop infinitely, else exec ends iteration exceeded (or duration exceeded)
+        duration: float|int
+            -1 for loop infinitely, else exec ends after elapsed exceeded in seconds (or duration exceeded)
+        chunk_size: int
+            default 1MB, MUST evenly divide byte_array length
+                instead of sequentially asserting, randomly dart around the file
+                say the byte_array length 32, data_filepath length 64, chunk_size 4
+                we will generate 64 / 4 = 16 "windows" to jump around and compare
+        poll: float|int
+            interval between sampling
+        log_every: int
+            default 1GB, log a progress report every X bytes
+        stop_event: threading.Event
+            a way to short circuit exit if stop_event.is_set()
+
+    Returns:
+        None
     '''
-    operation = 'write+read'
-    logging.info('starting %r', operation)
+    operation = 'health'
 
     if system.admin_detect() != 0:
         raise RuntimeError('Must be run as administrator or sudo!')
@@ -77,8 +100,8 @@ def health(
             # flow control
             'flow',
             '--steps',
-            'write',
-            'read',
+            'write_burnin',
+            'read_seq',
             '--flow-iterations',
             iterations,
             '--flow-duration',
@@ -96,17 +119,14 @@ def health(
         ]
 
         # array
-        if size == constants.SIZE:
-            cmd += ['--search-optimal']
-        else:
+        if size != constants.SIZE:
             cmd += ['--size', size]
         if value != constants.VALUE:
             cmd += ['--value', value]
 
-        if burn_in:
-            cmd += ['--burn-in']
-        if chunk_size != constants.chunk_size:
-            cmd += ['--random-read', chunk_size]
+        if chunk_size != constants.CHUNK_SIZE:
+            cmd += ['--chunk-size', chunk_size]
+
         cmd = [str(ele) for ele in cmd]
         logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd))
         with open(stdout, 'wb') as sout:
