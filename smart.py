@@ -372,13 +372,13 @@ def telemetry_loop(
                     value = cdi[str(disk_number)]
                     writer.writerow(value)
 
-                    logging.debug(
-                        'Disk %s (%s) S.M.A.R.T.\n%s', disk_number, drive_letter,
-                        pd.DataFrame([{
-                            k: v
-                            for k, v in value.items() if k in summary_columns
-                        }])
-                    )
+                    # logging.debug(
+                    #     'Disk %s (%s) S.M.A.R.T.\n%s', disk_number, drive_letter,
+                    #     pd.DataFrame([{
+                    #         k: v
+                    #         for k, v in value.items() if k in summary_columns
+                    #     }])
+                    # )
 
                 else:
                     for value in cdi.values():
