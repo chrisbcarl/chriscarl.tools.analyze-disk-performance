@@ -23,6 +23,7 @@ Date:       2024-09-26
 Modified:   2024-09-26
 
 Modified:
+    2025-08-10 - chrisbcarl - it works and its so nice
     2025-08-09 - chrisbcarl - FULL reorganization and its actually 1000% better
                               log manipulation works a treat, still got a ways to go
                               full refactor complete, health and system are the only remaining ones to go
@@ -68,6 +69,8 @@ Examples:
             >>> --poll 3
 
     - telemetry
+        - loop
+            >>> python main.py telemetry_loop --all-drives
         - one drive (the drive of default data_filepath)
             >>> python main.py telemetry
         - all drives
@@ -120,40 +123,12 @@ Examples:
             >>>     --data-filepath I:/tmp --size 4GB --value 69 --chunk-size 64MB --log-every 512MB
 
     - benchmarks
-        - health
+        - health: WARNING delete all partitions that arent in active use, run 3x fulpak write read
             >>> python main.py health
 
 TODO:
     write_burnin needs
         --size as well as --total-size, where --size fills --total-size
-
-
-    - multi-drive
-    ... # typical: take all drives, give them a partition, benchmark it, write-read, repeat 3x, S.M.A.R.T. monitoring
-    >>> python main.py health
-
-    ... # create a random file that writes very quickly
-    >>> python main.py write --data-filepath C:/temp/tmp --iterations 1 --burn-in --search-optimal --skip-telemetry
-    ... # create a file of 10mb
-    >>> python main.py write --data-filepath C:/temp/tmp --size 10mb --iterations 1 --burn-in --skip-telemetry
-    ... # read the file sequentially 4 times
-    >>> python main.py read --data-filepath C:/temp/tmp --iterations 4 --skip-telemetry
-    ... # read the file randomly forever, the randomness of the array jumps around in 256 windows, notify every 4 gbs
-    >>> python main.py read --data-filepath C:/temp/tmp --random-read 1mb --skip-telemetry --log-unit GB --log-mod 4
-
-    - flow: combine multiple stuff
-    ... # read then write then telemetry without the asynchronous thread
-    >>> python main.py flow --steps write read telemetry --burn-in --size 1kb --flow-iterations 1
-
-    - flows
-    - What most people think of as write-read benchmarking
-        python main.py perf+fill+read --data-filepath Y:/temp
-    - Find performance sweetspot and fill the disk at partition D:/
-        python main.py perf+fill --data-filepath D:/temp
-    - Evaluate overall health on all newly inserted disks
-        python main.py health --ignore-partitions C --log-level DEBUG
-    - Just launch a cyrstaldiskinfo monitor
-        python main.py smartmon
 '''
 # stdlib
 from __future__ import print_function, division
@@ -462,7 +437,7 @@ def main():
         if not any(
             [
                 func is flow.flow and 'telemetry' in args.steps,
-                func in {smart.telemetry, system.create_partitions, system.delete_partitions},
+                func in {smart.telemetry, smart.telemetry_loop, system.create_partitions, system.delete_partitions},
             ]
         ):
             thread = smart.telemetry_thread(**telemetry_thread_kwargs)
@@ -480,6 +455,8 @@ def main():
             stop_event.set()
         if thread:
             thread.join()
+        logging.info('S.M.A.R.T. filepath: "%s"', kwargs.get('smart_filepath', 'n/a'))
+        logging.info('Summary filepath: "%s"', kwargs.get('summary_filepath', 'n/a'))
         if success:
             logging.info('success!')
         else:

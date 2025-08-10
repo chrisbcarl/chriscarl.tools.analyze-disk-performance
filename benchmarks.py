@@ -34,7 +34,7 @@ def health(
     # general/telemetry
     poll=constants.POLL,
     log_level=constants.LOG_LEVEL,
-    log_every=constants.LOG_EVERY,
+    log_every=64 * constants.GB,
     stop_event=constants.STOP_EVENT,
     **kwargs
 ):
@@ -101,7 +101,7 @@ def health(
             # flow control
             'flow',
             '--steps',
-            'write_burnin',
+            'write_fulpak',
             'read_seq',
             '--flow-iterations',
             iterations,
@@ -113,6 +113,8 @@ def health(
             data_filepath,
             '--log-level',
             log_level,
+            '--log-every',
+            log_every,
             # array
             # read/write args
             '--iterations',
@@ -127,10 +129,10 @@ def health(
         if chunk_size != constants.CHUNK_SIZE:
             cmd += ['--chunk-size', chunk_size]
 
-        cmd = [str(ele) for ele in cmd]
-        logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd))
+        cmd_strs = [str(ele) for ele in cmd]
+        logging.debug('drive %s (%s): %s', drive_number, drive_letter, subprocess.list2cmdline(cmd_strs))
         with open(stdout, 'wb') as sout:
-            popen = subprocess.Popen(cmd, stdout=sout)
+            popen = subprocess.Popen(cmd_strs, stdout=sout)
             popens.append(popen)
 
     try:

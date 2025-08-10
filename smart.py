@@ -9,7 +9,7 @@ import logging
 import datetime
 import threading  # noqa: F401
 import subprocess
-from typing import Tuple, Dict, Optional  # noqa: F401
+from typing import Tuple, Dict, Optional, Any  # noqa: F401
 
 # third party
 import numpy as np
@@ -275,7 +275,7 @@ def telemetry_smart(stop_event=constants.STOP_EVENT):
                     break
 
 
-def telemetry_async(
+def telemetry_loop(
     no_telemetry=constants.NO_TELEMETRY,
     no_admin=constants.NO_ADMIN,
     no_crystaldiskinfo=constants.NO_CRYSTALDISKINFO,
@@ -285,8 +285,9 @@ def telemetry_async(
     data_filepath=constants.DATA_FILEPATH,
     summary_filepath=constants.SUMMARY_FILEPATH,
     stop_event=constants.STOP_EVENT,
+    **kwargs
 ):
-    # type: (bool, bool, bool, bool, float|int, str, str, str, threading.Event) -> None
+    # type: (bool, bool, bool, bool, float|int, str, str, str, threading.Event, Any) -> None
     '''
     Description:
         Poll telemetry including S.M.A.R.T. and others.
@@ -306,6 +307,7 @@ def telemetry_async(
             default False, disable so you can run without admin
         all_drives: bool
             default False, get all drive S.M.A.R.T. data instead of only the drive who hosts the data_filepath
+        **kwargs: varkwarguments
 
     Returns:
         bytearray
@@ -322,9 +324,8 @@ def telemetry_async(
 
     prior_percent = None
     disk_number = ''
+    prior_rw = {'reads': {}, 'writes': {}}  # type: Dict[str, Dict[str, int]]
     prior_time = time.time()
-    prior_reads = 0
-    prior_writes = 0
 
     if not no_admin and not no_crystaldiskinfo:
         cdi, letter_map = telemetry_smart(stop_event=stop_event)
@@ -339,12 +340,30 @@ def telemetry_async(
             disk_number = letter_map[drive_letter]
         columns = third.upsert_df_to_csv(cdi_df, smart_filepath)
 
+        for dn, crystal_disk in cdi.items():
+            reads = crystal_disk.get('Host Reads', -1)
+            if isinstance(reads, int):
+                host_reads = reads
+            else:
+                host_reads = int(reads.split()[0])  # GB naturally
+            if reads == -1:
+                # busted drive
+                continue
+            writes = crystal_disk['Host Writes']
+            if isinstance(writes, int):
+                host_writes = writes
+            else:
+                host_writes = int(writes.split()[0])  # GB naturally
+
+            prior_rw['reads'][dn] = host_reads
+            prior_rw['writes'][dn] = host_writes
+
     logging.debug('disk_number: %s, drive_letter: %s', disk_number, drive_letter)
     logging.debug('no_admin: %s, no_crystaldiskinfo: %s', no_admin, no_crystaldiskinfo)
+    logging.info('logging per drive if read/write activity > 1GB occurs')
     iteration = 0
     while not stop_event.is_set():
         # logging.debug('poll: %d', iteration)
-        stats = []
         if not no_admin and not no_crystaldiskinfo:
             cdi = crystaldiskinfo()
             with open(smart_filepath, 'a', encoding='utf-8', newline='') as a:
@@ -361,30 +380,6 @@ def telemetry_async(
                         }])
                     )
 
-                    now = time.time()
-                    elapsed = now - prior_time
-                    prior_time = now
-
-                    unit = 'MB'
-                    reads = value['Host Reads']
-                    if isinstance(reads, int):
-                        host_reads = reads
-                    else:
-                        host_reads = int(reads.split()[0])  # GB naturally
-                    writes = value['Host Writes']
-                    if isinstance(writes, int):
-                        host_writes = writes
-                    else:
-                        host_writes = int(writes.split()[0])  # GB naturally
-
-                    read_throughput = (host_reads - prior_reads) / elapsed * 1000  # probably base 10
-                    write_throughput = (host_writes - prior_writes) / elapsed * 1000  # probably base 10
-
-                    if prior_reads != 0:
-                        stats.append(
-                            f'Read: {read_throughput:0.3f} {unit}/sec | Write: {write_throughput:0.3f} {unit}/sec'
-                        )
-                    prior_reads, prior_writes = host_reads, host_writes
                 else:
                     for value in cdi.values():
                         writer.writerow(value)
@@ -398,14 +393,55 @@ def telemetry_async(
                         )
                     )
 
-        if drive_letter and disk_number:
+            now = time.time()
+            elapsed = now - prior_time
+            prior_time = now
+            unit = 'MB'
+            for dn, crystal_disk in cdi.items():
+                dl = crystal_disk.get('Drive Letter', '')
+                reads = crystal_disk.get('Drive Letter', '')
+                model = crystal_disk.get('Model', '???')
+                serial = crystal_disk.get('Serial Number', '???')
+                size = ' '.join(crystal_disk['Disk Size'].split()[:2])
+
+                reads = crystal_disk.get('Host Reads', -1)
+                if isinstance(reads, int):
+                    host_reads = reads
+                else:
+                    host_reads = int(reads.split()[0])  # GB naturally
+                if reads == -1:
+                    # busted drive
+                    continue
+                writes = crystal_disk['Host Writes']
+                if isinstance(writes, int):
+                    host_writes = writes
+                else:
+                    host_writes = int(writes.split()[0])  # GB naturally
+
+                prior_reads = prior_rw['reads'][dn]
+                prior_writes = prior_rw['writes'][dn]
+
+                # calculating with MB, so * 1000
+                read_throughput = (host_reads - prior_reads) / elapsed * 1000  # probably base 10
+                write_throughput = (host_writes - prior_writes) / elapsed * 1000  # probably base 10
+
+                # only print if disks are active!
+                if read_throughput > 0 or write_throughput > 0:
+                    du = psutil.disk_usage(dl)
+                    logging.info(
+                        'Disk %s (%s) | %s | %s | Usage: %s of %s | Read: %0.3f %s/sec | Write: %0.3f %s/sec', dn, dl,
+                        model, serial, du.percent, size, read_throughput, unit, write_throughput, unit
+                    )
+
+                    # record priors if enough i/o has passed
+                    prior_rw['reads'][dn] = host_reads
+                    prior_rw['writes'][dn] = host_writes
+
+        if no_crystaldiskinfo and drive_letter:
             du = psutil.disk_usage(drive_letter)
             if str(du.percent) != str(prior_percent):
-                stats.append(f'Usage: {du.percent}%')
+                logging.info('Disk %s (?) - Usage: %s', drive_letter, du.percent)
                 prior_percent = str(du.percent)
-
-            if stats:
-                logging.info('Disk %s (%s) - %s', disk_number, drive_letter, ' - '.join(stats))
 
         iteration += 1
         for _ in range(int(poll * 25)):
@@ -531,7 +567,7 @@ def telemetry_thread(
             raise RuntimeError('Cannot run CrystalDiskInfo!')
 
     t = threading.Thread(
-        target=telemetry_async,
+        target=telemetry_loop,
         kwargs=dict(
             no_telemetry=no_telemetry,
             no_admin=no_admin,

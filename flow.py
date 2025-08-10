@@ -27,6 +27,7 @@ FUNCS = [
     input_output.read_seq,
     input_output.read_rand,
     smart.telemetry,
+    smart.telemetry_loop,
     # TODO: test
     system.create_partitions,
     system.delete_partitions,

@@ -330,7 +330,7 @@ def write_burnin(
                     throughput = bytes_written / elapsed
                 du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                    'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
                     bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_written
@@ -343,7 +343,7 @@ def write_burnin(
         throughput = bytes_written / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
+        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
         bytes_to_size(throughput)
     )
 
@@ -432,7 +432,7 @@ def write_fulpak(
                         throughput = bytes_written / elapsed
                     du = psutil.disk_usage(drive_letter)
                     logging.info(
-                        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
                         bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                     )
                     prior_bytes = bytes_written
@@ -449,7 +449,7 @@ def write_fulpak(
                         throughput = bytes_written / elapsed
                     du = psutil.disk_usage(drive_letter)
                     logging.info(
-                        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
                         bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                     )
                     prior_bytes = bytes_written
@@ -470,7 +470,7 @@ def write_fulpak(
         throughput = bytes_written / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
+        'free=%s%%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
         bytes_to_size(throughput)
     )
 
@@ -563,7 +563,7 @@ def read_seq(
                     throughput = bytes_read / elapsed
                 du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
+                    'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
                     elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_read
@@ -594,7 +594,7 @@ def read_seq(
         throughput = bytes_read / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
+        'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
         bytes_to_size(throughput)
     )
 
@@ -688,7 +688,7 @@ def read_rand(
                     throughput = bytes_read / elapsed
                 du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
+                    'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
                     elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_read
@@ -713,7 +713,7 @@ def read_rand(
         throughput = bytes_read / elapsed
     du = psutil.disk_usage(drive_letter)
     logging.info(
-        'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
+        'free=%s%%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
         bytes_to_size(throughput)
     )
 
