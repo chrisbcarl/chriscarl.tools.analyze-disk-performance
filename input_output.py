@@ -314,6 +314,7 @@ def write_burnin(
     logging.debug('byte_array=%s, data_filepath="%s"', bytes_to_size(len(byte_array)), data_filepath)
     logging.info('write_burnin with byte_array of %s', bytes_to_size(len(byte_array)))
 
+    drive_letter, _ = os.path.splitdrive(data_filepath)
     bytes_written = 0
     prior_bytes = 0
     start = time.time()
@@ -327,9 +328,10 @@ def write_burnin(
                 elapsed = end - start
                 if elapsed > 0:
                     throughput = bytes_written / elapsed
+                du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'written=%s, elapsed=%0.3f sec, throughput=%s/s', bytes_to_size(bytes_written), elapsed,
-                    bytes_to_size(throughput)
+                    'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                    bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_written
 
@@ -339,11 +341,10 @@ def write_burnin(
     throughput = 0.0
     if elapsed > 0:
         throughput = bytes_written / elapsed
+    du = psutil.disk_usage(drive_letter)
     logging.info(
-        'written=%s, elapsed=%0.3f sec, throughput=%s/s',
-        bytes_to_size(bytes_written),
-        elapsed,
-        bytes_to_size(throughput),
+        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
+        bytes_to_size(throughput)
     )
 
     if not no_delete:
@@ -412,14 +413,14 @@ def write_fulpak(
     logging.info('write_fulpak with byte_array of %s', bytes_to_size(len(byte_array)))
 
     # write the bulk of the data
-    drive, _ = os.path.splitdrive(data_filepath)
+    drive_letter, _ = os.path.splitdrive(data_filepath)
     size = len(byte_array)
     prior_bytes = 0
     bytes_written = 0
     touch(data_filepath)
     start = time.time()
     with open(data_filepath, 'ab') as wb:
-        while psutil.disk_usage(drive).free > size:
+        while psutil.disk_usage(drive_letter).free > size:
             for i in range(0, len(byte_array), chunk_size):
                 if stop_event.is_set():
                     break
@@ -429,11 +430,10 @@ def write_fulpak(
                     elapsed = end - start
                     if elapsed > 0:
                         throughput = bytes_written / elapsed
+                    du = psutil.disk_usage(drive_letter)
                     logging.info(
-                        'written=%s, elapsed=%0.3f sec, throughput=%s/s',
-                        bytes_to_size(bytes_written),
-                        elapsed,
-                        bytes_to_size(throughput),
+                        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                        bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                     )
                     prior_bytes = bytes_written
 
@@ -447,15 +447,14 @@ def write_fulpak(
                     elapsed = end - start
                     if elapsed > 0:
                         throughput = bytes_written / elapsed
+                    du = psutil.disk_usage(drive_letter)
                     logging.info(
-                        'written=%s, elapsed=%0.3f sec, throughput=%s/s',
-                        bytes_to_size(bytes_written),
-                        elapsed,
-                        bytes_to_size(throughput),
+                        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent,
+                        bytes_to_size(bytes_written), elapsed, bytes_to_size(throughput)
                     )
                     prior_bytes = bytes_written
 
-                if psutil.disk_usage(drive).free > con.MB:
+                if psutil.disk_usage(drive_letter).free > con.MB:
                     one_mb_array = byte_array[i * con.MB:(i + 1) * con.MB]
                     bytes_written += wb.write(one_mb_array)
                 else:
@@ -469,11 +468,10 @@ def write_fulpak(
     throughput = 0.0
     if elapsed > 0:
         throughput = bytes_written / elapsed
+    du = psutil.disk_usage(drive_letter)
     logging.info(
-        'written=%s, elapsed=%0.3f sec, throughput=%s/s',
-        bytes_to_size(bytes_written),
-        elapsed,
-        bytes_to_size(throughput),
+        'free=%s%, written=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_written), elapsed,
+        bytes_to_size(throughput)
     )
 
     if not no_delete:
@@ -547,6 +545,7 @@ def read_seq(
         'read_seq with byte_array of %s, chunk_size=%s', bytes_to_size(len(byte_array)), bytes_to_size(chunk_size)
     )
 
+    drive_letter, _ = os.path.splitdrive(data_filepath)
     bytes_read = 0
     prior_bytes = 0
     start = time.time()
@@ -562,11 +561,10 @@ def read_seq(
                 elapsed = end - start
                 if elapsed > 0:
                     throughput = bytes_read / elapsed
+                du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'read=%s, elapsed=%0.3f sec, throughput=%s/s',
-                    bytes_to_size(bytes_read),
-                    elapsed,
-                    bytes_to_size(throughput),
+                    'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
+                    elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_read
 
@@ -594,11 +592,10 @@ def read_seq(
     throughput = 0.0
     if elapsed > 0:
         throughput = bytes_read / elapsed
+    du = psutil.disk_usage(drive_letter)
     logging.info(
-        'read=%s, elapsed=%0.3f sec, throughput=%s/s',
-        bytes_to_size(bytes_read),
-        elapsed,
-        bytes_to_size(throughput),
+        'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
+        bytes_to_size(throughput)
     )
 
     return bytes_read, throughput, byte_array
@@ -662,6 +659,7 @@ def read_rand(
         'read_rand with byte_array of %s and chunk_size %s', bytes_to_size(len(byte_array)), bytes_to_size(chunk_size)
     )
 
+    drive_letter, _ = os.path.splitdrive(data_filepath)
     filesize = os.path.getsize(data_filepath)
     arrsize = len(byte_array)
     if arrsize % chunk_size != 0:
@@ -688,11 +686,10 @@ def read_rand(
                 elapsed = end - start
                 if elapsed > 0:
                     throughput = bytes_read / elapsed
+                du = psutil.disk_usage(drive_letter)
                 logging.info(
-                    'read=%s, elapsed=%0.3f sec, throughput=%s/s',
-                    bytes_to_size(bytes_read),
-                    elapsed,
-                    bytes_to_size(throughput),
+                    'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read),
+                    elapsed, bytes_to_size(throughput)
                 )
                 prior_bytes = bytes_read
             # if i % i_divs == 0:  # this also works very well TODO: good idiom to have
@@ -714,11 +711,10 @@ def read_rand(
     throughput = 0.0
     if elapsed > 0:
         throughput = bytes_read / elapsed
+    du = psutil.disk_usage(drive_letter)
     logging.info(
-        'read=%s, elapsed=%0.3f sec, throughput=%s/s',
-        bytes_to_size(bytes_read),
-        elapsed,
-        bytes_to_size(throughput),
+        'free=%s%, read=%s, elapsed=%0.3f sec, throughput=%s/s', du.percent, bytes_to_size(bytes_read), elapsed,
+        bytes_to_size(throughput)
     )
 
     return bytes_read, elapsed, byte_array
