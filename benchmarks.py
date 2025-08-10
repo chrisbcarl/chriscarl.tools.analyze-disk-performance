@@ -1,4 +1,5 @@
 # stdlib
+import __main__
 import os
 import sys
 import time
@@ -23,7 +24,7 @@ def health(
     ignore_partitions=constants.IGNORE_PARTITIONS,
     include_partitions=None,
     # array
-    size=constants.SIZE,
+    size=4 * constants.MB,
     value=constants.VALUE,
     # flow
     iterations=3,
@@ -96,7 +97,7 @@ def health(
         stdout = abspath(f'{output_dirpath}/{drive_number}-{operation}.stdout')
         cmd = [
             sys.executable,
-            abspath(__file__),
+            __main__.__file__,
             # flow control
             'flow',
             '--steps',
@@ -107,7 +108,7 @@ def health(
             '--flow-duration',
             duration,
             # general / telemetry
-            '--skip-telemetry',
+            '--no-telemetry',
             '--data-filepath',
             data_filepath,
             '--log-level',
@@ -123,7 +124,6 @@ def health(
             cmd += ['--size', size]
         if value != constants.VALUE:
             cmd += ['--value', value]
-
         if chunk_size != constants.CHUNK_SIZE:
             cmd += ['--chunk-size', chunk_size]
 

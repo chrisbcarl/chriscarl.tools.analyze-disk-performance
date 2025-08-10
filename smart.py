@@ -366,8 +366,16 @@ def telemetry_async(
                     prior_time = now
 
                     unit = 'MB'
-                    host_reads = int(value['Host Reads'].split()[0])  # GB naturally
-                    host_writes = int(value['Host Writes'].split()[0])  # GB naturally
+                    reads = value['Host Reads']
+                    if isinstance(reads, int):
+                        host_reads = reads
+                    else:
+                        host_reads = int(reads.split()[0])  # GB naturally
+                    writes = value['Host Writes']
+                    if isinstance(writes, int):
+                        host_writes = writes
+                    else:
+                        host_writes = int(writes.split()[0])  # GB naturally
 
                     read_throughput = (host_reads - prior_reads) / elapsed * 1000  # probably base 10
                     write_throughput = (host_writes - prior_writes) / elapsed * 1000  # probably base 10

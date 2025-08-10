@@ -3,7 +3,7 @@ import os
 import json
 import logging
 import subprocess
-from typing import List, Optional, Dict  # noqa: F401
+from typing import List, Optional, Dict, Any  # noqa: F401
 
 # third party
 from stdlib import abspath
@@ -24,8 +24,8 @@ def admin_detect():
     return 0
 
 
-def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions=None):
-    # type: (List[str], Optional[List[str]]) -> List[str|int]
+def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions=None, **kwargs):
+    # type: (List[str], Optional[List[str]], Any) -> List[str|int]
     '''
     Description:
         Look through all partitions and remove them so the disks are raw
@@ -36,6 +36,7 @@ def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_par
             If you know of partitions youd like to avoid ahead of time, maybe avoid deleting them...
         include_partitions: Optional[List[str]]
             If you know which to delete, delete only those, override ignore_partitions
+        **kwargs: varkwarguments
 
     Returns:
         List[str|int]
@@ -74,8 +75,8 @@ def delete_partitions(ignore_partitions=constants.IGNORE_PARTITIONS, include_par
     return disk_numbers
 
 
-def create_partitions(disk_numbers=constants.DISK_NUMBERS):
-    # type: (List[str|int]) -> Dict[str, str]
+def create_partitions(disk_numbers=constants.DISK_NUMBERS, **kwargs):
+    # type: (List[str|int], Any) -> Dict[str, str]
     '''
     Description:
         Go through any raw disk and give them a partition, returning a dict of number: letter
@@ -85,6 +86,7 @@ def create_partitions(disk_numbers=constants.DISK_NUMBERS):
             Ex) [0]
             If you know the disk numbers ahead of time, provide them
             else, any raw disk will be partitioned and assigned a drive letter
+        **kwargs: varkwarguments
 
     Returns:
         Dict[str, str]
