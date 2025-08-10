@@ -32,7 +32,7 @@ def health(
     # read
     chunk_size=constants.CHUNK_SIZE,
     # general/telemetry
-    poll=constants.POLL,
+    poll=150,
     log_level=constants.LOG_LEVEL,
     log_every=64 * constants.GB,
     stop_event=constants.STOP_EVENT,
@@ -134,12 +134,19 @@ def health(
         with open(stdout, 'wb') as sout:
             popen = subprocess.Popen(cmd_strs, stdout=sout)
             popens.append(popen)
+    exit_codes = [-1] * len(popens)
+    # pids = [popen.pid for popen in popens]
 
     try:
         while True:
             now = datetime.datetime.now()
             logging.info('elapsed: %s', now - started)
-            if all([popen.poll() is not None for popen in popens]):
+            for p, popen in enumerate(popens):
+                exit_code = popen.poll()
+                if isinstance(exit_code, int):
+                    exit_codes[p] = exit_code
+
+            if all([ele != -1 for ele in exit_codes]):
                 logging.info('All %r finished!', operation)
                 break
             time.sleep(poll)
@@ -147,7 +154,6 @@ def health(
         logging.warning('ctrl + c detected! killing processes, removing resources...')
         logging.debug('ctrl + c detected! killing processes, removing resources...', exc_info=True)
 
-    logging.info('closing resources...')
     for popen in popens:
         if popen.poll() is None:
             popen.kill()
@@ -162,3 +168,8 @@ def health(
 
     logging.info('removing partitions...')
     system.delete_partitions(include_partitions=list(disk_number_to_letter_dict.values()))
+
+    logging.info('closing resources...')
+    failures = [exit_code != 0 for exit_code in exit_codes]
+    if failures:
+        logging.error('Failed! %d / %d processes failed with exit codes: %s!', len(failures), len(popens), failures)
