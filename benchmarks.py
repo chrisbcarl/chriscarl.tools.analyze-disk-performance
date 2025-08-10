@@ -32,7 +32,7 @@ def health(
     # read
     chunk_size=constants.CHUNK_SIZE,
     # general/telemetry
-    poll=150,
+    poll=150.0,
     log_level=constants.LOG_LEVEL,
     log_every=64 * constants.GB,
     stop_event=constants.STOP_EVENT,
@@ -154,6 +154,7 @@ def health(
         logging.warning('ctrl + c detected! killing processes, removing resources...')
         logging.debug('ctrl + c detected! killing processes, removing resources...', exc_info=True)
 
+    stop_event.set()
     for popen in popens:
         if popen.poll() is None:
             popen.kill()

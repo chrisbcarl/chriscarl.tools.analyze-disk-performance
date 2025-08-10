@@ -117,7 +117,7 @@ def flow(
             stop_event=stop_event,
         )
     finally:
-        if flow_no_delete_end:
+        if not flow_no_delete_end:
             logging.warning('Finally deleting data_filepath at the end of the flow...')
             if os.path.isfile(kwargs['data_filepath']):
                 os.remove(kwargs['data_filepath'])
