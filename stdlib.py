@@ -221,7 +221,7 @@ def loop_or_elapsed(
         while not stop_event.is_set():
             elapsed = time.time() - start
             logging.info(
-                '%r loop until either %0.3f > %0.3f sec OR %d / %d', description, elapsed, duration, iteration,
+                '%r loop until either %0.3f > %0.3f sec OR %d / %d', description, elapsed, duration, iteration + 1,
                 iterations
             )
             # sub_kwargs = {k: v for k, v in kwargs.items() if k.startswith(f'{func.__name__}_')}

@@ -322,13 +322,18 @@ def telemetry_loop(
     else:
         drive_letter, _ = os.path.splitdrive(data_filepath)
 
+    letter_map = {}
+    number_map = {}
     prior_percent = None
     disk_number = ''
     prior_rw = {'reads': {}, 'writes': {}}  # type: Dict[str, Dict[str, int]]
+    bw_rw = {'reads': {}, 'writes': {}}  # type: Dict[str, Dict[str, int]]
     prior_time = time.time()
+    unit = 'MB'
 
     if not no_admin and not no_crystaldiskinfo:
         cdi, letter_map = telemetry_smart(stop_event=stop_event)
+        number_map = {v: k for k, v in letter_map.items()}
         logging.debug('letter_map:\n%s', pprint.pformat(letter_map, indent=2))
         if not cdi:
             # we failed and tried multiple times or things were cancelled early during a failure
@@ -357,6 +362,7 @@ def telemetry_loop(
 
             prior_rw['reads'][dn] = host_reads
             prior_rw['writes'][dn] = host_writes
+            bw_rw['reads'][dn] = bw_rw['writes'][dn] = 0
 
     logging.debug('disk_number: %s, drive_letter: %s', disk_number, drive_letter)
     logging.debug('no_admin: %s, no_crystaldiskinfo: %s', no_admin, no_crystaldiskinfo)
@@ -396,7 +402,6 @@ def telemetry_loop(
             now = time.time()
             elapsed = now - prior_time
             prior_time = now
-            unit = 'MB'
             for dn, crystal_disk in cdi.items():
                 dl = crystal_disk.get('Drive Letter', '')
                 reads = crystal_disk.get('Drive Letter', '')
@@ -424,6 +429,10 @@ def telemetry_loop(
                 # calculating with MB, so * 1000
                 read_throughput = (host_reads - prior_reads) / elapsed * 1000  # probably base 10
                 write_throughput = (host_writes - prior_writes) / elapsed * 1000  # probably base 10
+                if read_throughput > bw_rw['reads'][dn]:
+                    bw_rw['reads'][dn] = read_throughput
+                if write_throughput > bw_rw['writes'][dn]:
+                    bw_rw['writes'][dn] = write_throughput
 
                 # only print if disks are active!
                 if read_throughput > 0 or write_throughput > 0:
@@ -462,6 +471,25 @@ def telemetry_loop(
 
         summary_df = summarize_crystaldiskinfo_df(cdi_df)
         summary_df.to_csv(summary_filepath, index=False)
+
+    if not no_admin and not no_crystaldiskinfo:
+        for dn, dl in number_map.items():
+            crystal_disk = cdi[dn]
+            if dn not in bw_rw['reads']:
+                continue
+            read_throughput = bw_rw['reads'][dn]
+            write_throughput = bw_rw['writes'][dn]
+            if read_throughput == 0 and write_throughput == 0:
+                continue
+
+            dl = crystal_disk.get('Drive Letter', '')
+            reads = crystal_disk.get('Drive Letter', '')
+            model = crystal_disk.get('Model', '???')
+            serial = crystal_disk.get('Serial Number', '???')
+            logging.info(
+                'Disk %s (%s) | %s | %s | Max Read: %0.3f %s/sec | Max Write: %0.3f %s/sec', dn, dl, model, serial,
+                read_throughput, unit, write_throughput, unit
+            )
 
 
 def telemetry(
