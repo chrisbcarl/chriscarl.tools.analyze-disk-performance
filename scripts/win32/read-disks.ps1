@@ -2,7 +2,13 @@
 
 $output = @{}
 Get-Disk | ForEach-Object {
-    $biggest_partition_drive_letter = ((Get-Partition -DiskNumber 0 | Sort-Object -Property Size -Descending).DriveLetter)[0]
+    $partition = Get-Partition -DiskNumber $_.Number -ErrorAction SilentlyContinue
+    if ($null -ne $partition) {
+        $biggest_partition_drive_letter = (($partition | Sort-Object -Property Size -Descending).DriveLetter)[0]
+    } else {
+        $biggest_partition_drive_letter = $null
+    }
+
     $output["$($_.Number)"] = @{
         Number=$_.Number;
         Location=$_.Location;

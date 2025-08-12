@@ -23,6 +23,8 @@ Date:       2024-09-26
 Modified:   2024-09-26
 
 Modified:
+    2025-08-11 - chrisbcarl - fixed a bug where disks werent getting initialized because numbers were tied to partitions
+                              actually using read-disks.ps1
     2025-08-10 - chrisbcarl - it works and its so nice
                               fixed a bug where large files that dont match size were always loaded
     2025-08-09 - chrisbcarl - FULL reorganization and its actually 1000% better

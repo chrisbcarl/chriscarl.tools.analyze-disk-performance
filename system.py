@@ -17,9 +17,9 @@ def admin_detect():
     try:
         admin_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\admin.ps1")
         subprocess.check_call(['powershell', admin_ps1])
-        logging.info('admin detected!')
+        logging.debug('Admin detected!')
     except subprocess.CalledProcessError:
-        logging.warning('not admin!')
+        logging.warning('Not admin!')
         return 1
     return 0
 
@@ -116,8 +116,8 @@ def create_partitions(disk_numbers=constants.DISK_NUMBERS, **kwargs):
     return disk_number_to_letter_dict
 
 
-def read_disks(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions=None, **kwargs):
-    # type: (List[str], Optional[List[str]], Any) -> Dict[str, str]
+def read_disks(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions=None, default='add', **kwargs):
+    # type: (List[str], Optional[List[str]], str, Any) -> Dict[str, str]
     '''
     Description:
         Look through all disks and return only the disks you want to keep.
@@ -128,6 +128,9 @@ def read_disks(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions
             If you know of partitions youd like to avoid ahead of time, maybe avoid deleting them...
         include_partitions: Optional[List[str]]
             If you know which to delete, delete only those, override ignore_partitions
+        default: str
+            default 'add' - if a partition is not in include and not in ignore, add it anyway
+            default 'skip' - if a partition is not in include and not in ignore, skip it anyway
         **kwargs: varkwarguments
 
     Returns:
@@ -148,7 +151,7 @@ def read_disks(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions
 
     disk_number_to_letter = {}
     for disk_number, disk in read_disks.items():
-        drive_letter = disk['DriveLetter']
+        drive_letter = disk.get('DriveLetter', None)
         if include_partitions:
             if drive_letter in include_partitions:
                 logging.debug(
@@ -163,8 +166,17 @@ def read_disks(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions
                     'including disk %s due to drive letter %s NOT in ignore_partitions: %s', disk_number, drive_letter,
                     ignore_partitions
                 )
-        raise NotImplementedError(
-            f'Disk {disk_number} with drive letter {drive_letter} unaccounted for! ignore_partitions: {ignore_partitions}; include_partitions: {include_partitions}'
-        )
+        else:
+            if default == 'add':
+                disk_number_to_letter[disk_number] = drive_letter
+                logging.debug(
+                    'including disk %s due to drive letter %s not in ignore_partitions (%s) nor in include_partitions (%s)',
+                    disk_number, drive_letter, ignore_partitions, include_partitions
+                )
+            else:
+                logging.debug(
+                    'skipping disk %s due to drive letter %s not in ignore_partitions (%s) nor in include_partitions (%s)',
+                    disk_number, drive_letter, ignore_partitions, include_partitions
+                )
 
     return disk_number_to_letter
