@@ -78,7 +78,13 @@ def health(
         raise RuntimeError('Must be run as administrator or sudo!')
 
     logging.info('deleting partitions...')
-    disk_numbers = system.delete_partitions(ignore_partitions=ignore_partitions, include_partitions=include_partitions)
+    _ = system.delete_partitions(ignore_partitions=ignore_partitions, include_partitions=include_partitions)
+
+    disk_number_to_letter_dict = system.read_disks(
+        ignore_partitions=ignore_partitions, include_partitions=include_partitions
+    )
+    disk_numbers = list(disk_number_to_letter_dict)
+    logging.info('discovered disks %s...', disk_numbers)
 
     logging.info('creating partitions...')
     disk_number_to_letter_dict = system.create_partitions(disk_numbers=disk_numbers)

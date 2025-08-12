@@ -114,3 +114,57 @@ def create_partitions(disk_numbers=constants.DISK_NUMBERS, **kwargs):
             raise RuntimeError(f'Drive {k} was unable to create a partition: {v}!')
 
     return disk_number_to_letter_dict
+
+
+def read_disks(ignore_partitions=constants.IGNORE_PARTITIONS, include_partitions=None, **kwargs):
+    # type: (List[str], Optional[List[str]], Any) -> Dict[str, str]
+    '''
+    Description:
+        Look through all disks and return only the disks you want to keep.
+
+    Arguments:
+        ignore_partitions: List[str]
+            Ex) ['C']
+            If you know of partitions youd like to avoid ahead of time, maybe avoid deleting them...
+        include_partitions: Optional[List[str]]
+            If you know which to delete, delete only those, override ignore_partitions
+        **kwargs: varkwarguments
+
+    Returns:
+        Dict[str, str]
+            dict of disk number to drive letter (possibly null), as readable by CrystalDiskMark and Windows Disk Utility
+    '''
+    if admin_detect() != 0:
+        raise RuntimeError('Must be run as administrator or sudo!')
+
+    include_partitions = include_partitions or []
+
+    read_disks_ps1 = abspath(SCRIPT_DIRPATH, r"scripts\win32\read-disks.ps1")
+    cmd = ['powershell', read_disks_ps1]
+    logging.debug(subprocess.list2cmdline(cmd))
+    output = subprocess.check_output(cmd, universal_newlines=True)
+    read_disks = json.loads(output)
+    logging.info('disks identified: %s', json.dumps(read_disks, indent=2))
+
+    disk_number_to_letter = {}
+    for disk_number, disk in read_disks.items():
+        drive_letter = disk['DriveLetter']
+        if include_partitions:
+            if drive_letter in include_partitions:
+                logging.debug(
+                    'including disk %s due to drive letter %s in include_partitions: %s', disk_number, drive_letter,
+                    include_partitions
+                )
+                disk_number_to_letter[disk_number] = drive_letter
+        elif ignore_partitions:
+            if drive_letter not in ignore_partitions:
+                disk_number_to_letter[disk_number] = drive_letter
+                logging.debug(
+                    'including disk %s due to drive letter %s NOT in ignore_partitions: %s', disk_number, drive_letter,
+                    ignore_partitions
+                )
+        raise NotImplementedError(
+            f'Disk {disk_number} with drive letter {drive_letter} unaccounted for! ignore_partitions: {ignore_partitions}; include_partitions: {include_partitions}'
+        )
+
+    return disk_number_to_letter

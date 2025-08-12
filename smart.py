@@ -459,20 +459,7 @@ def telemetry_loop(
                 break
 
     if not no_admin and not no_crystaldiskinfo:
-        cdi = crystaldiskinfo()
-        if drive_letter and disk_number:
-            df = pd.DataFrame([cdi[str(disk_number)]])
-        else:
-            df = pd.DataFrame(cdi.values())
-        third.upsert_df_to_csv(df, smart_filepath)
-        logging.info('S.M.A.R.T. Telemetry:\n%s', df.to_string(index=False))
-
-        cdi_df = pd.read_csv(smart_filepath)
-
-        summary_df = summarize_crystaldiskinfo_df(cdi_df)
-        summary_df.to_csv(summary_filepath, index=False)
-
-    if not no_admin and not no_crystaldiskinfo:
+        logging.info('S.M.A.R.T. Maximum Read/Write Throughput')
         for dn, dl in number_map.items():
             crystal_disk = cdi[dn]
             if dn not in bw_rw['reads']:
@@ -490,6 +477,17 @@ def telemetry_loop(
                 'Disk %s (%s) | %s | %s | Max Read: %0.3f %s/sec | Max Write: %0.3f %s/sec', dn, dl, model, serial,
                 read_throughput, unit, write_throughput, unit
             )
+
+    if not no_admin and not no_crystaldiskinfo:
+        cdi = crystaldiskinfo()
+        df = pd.DataFrame(cdi.values())
+        third.upsert_df_to_csv(df, smart_filepath)
+
+        cdi_df = pd.read_csv(smart_filepath)
+
+        summary_df = summarize_crystaldiskinfo_df(cdi_df)
+        summary_df.to_csv(summary_filepath, index=False)
+        logging.info('S.M.A.R.T. Telemetry:\n%s', summary_df.to_string(index=False))
 
 
 def telemetry(
