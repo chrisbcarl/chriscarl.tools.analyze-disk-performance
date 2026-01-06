@@ -81,7 +81,7 @@ Examples:
         - one drive with a different partition
             >>> python main.py telemetry --data-filepath I:/
         - if not admin
-            >>> python main.py telemetry --data-filepath I:/ --no-admin
+            >>> python main.py telemetry --no-admin --data-filepath I:/
 
     - create
         - creates a file that gets good write throughput
@@ -101,7 +101,8 @@ Examples:
             - fulpak using a file that has a high throughput
                 >>> python main.py write_fulpak --data-filepath I:/tmp
             - fulpak (leave the file behind) using a file of specific size
-                >>> python main.py write_fulpak --data-filepath I:/tmp --size 4mb --no-delete
+                >>> python main.py write_fulpak --data-filepath I:/tmp `
+                >>>     --size 4mb --no-delete
 
     - reading
         - read_seq
@@ -109,8 +110,8 @@ Examples:
                 >>> python main.py read_seq --size 4GB --chunk-size 16MB --log-every 128MB --no-telemetry
             - read_seq read an existing file w/o telemetry
                 >>> python main.py read_seq `
-                >>>     --data-filepath C/temp/chriscarl.tools.analyze-disk-performance/20250808-2249/data.dat `
-                >>>     --no-telemetry
+                >>>     --no-telemetry `
+                >>>     --data-filepath /temp/data.dat
         - read_rand
             - read_rand writes a 4GB file and reads from it by randomly window hopping in 1MB chunks
                 >>> python main.py read_rand --size 4GB --log-every 512MB --chunk-size 1MB --no-telemetry
@@ -119,11 +120,13 @@ Examples:
         - create + write_burnin + read_seq
             >>> python main.py flow --steps create write_burnin read_seq read_rand `
             >>>     --flow-iterations 3 `
-            >>>     --data-filepath I:/tmp --size 4GB --value 69 --chunk-size 64MB --log-every 512MB
+            >>>     --size 4GB --value 69 --chunk-size 64MB --log-every 512MB `
+            >>>     --data-filepath I:/tmp
         - create + write_burnin + read_seq: only 1 minutes of this stuff
             >>> python main.py flow --steps create write_burnin read_seq read_rand `
             >>>     --flow-duration 60 `
-            >>>     --data-filepath I:/tmp --size 4GB --value 69 --chunk-size 64MB --log-every 512MB
+            >>>     --size 4GB --value 69 --chunk-size 64MB --log-every 512MB `
+            >>>     --data-filepath I:/tmp
 
     - benchmarks
         - health: WARNING delete all partitions that arent in active use, run 3x fulpak write read
@@ -132,6 +135,13 @@ Examples:
 TODO:
     write_burnin needs
         --size as well as --total-size, where --size fills --total-size
+
+    USE A VERY SLOW DRIVE:
+       Can't ctrl+c after create_bytearray finishes
+        python main.py flow --steps create write_burnin read_seq read_rand `
+        >>     --flow-duration 360 `
+        >>     --size 4GB --value 69 --chunk-size 64MB --log-every 512MB `
+        >>     --data-filepath E:/plz
 '''
 # stdlib
 from __future__ import print_function, division

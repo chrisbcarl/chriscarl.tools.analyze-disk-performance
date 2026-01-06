@@ -38,5 +38,9 @@
     "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\scripts\\python.exe",
     // stubgen src\chriscarl -o dist/typing
     "python.analysis.stubPath": "${workspaceFolder}\\dist\\typing",
-    "python.analysis.extraPaths": ["${workspaceFolder}\\src"],
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}\\src"
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:venv",
+    "python-envs.pythonProjects": [],
 }

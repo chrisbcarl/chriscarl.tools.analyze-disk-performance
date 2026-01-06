@@ -497,8 +497,9 @@ def telemetry(
     no_admin=constants.NO_ADMIN,
     no_crystaldiskinfo=constants.NO_CRYSTALDISKINFO,
     all_drives=constants.ALL_DRIVES,
+    **kwargs
 ):
-    # type: (str, str, str, bool, bool, bool) -> None
+    # type: (str, str, str, bool, bool, bool, dict) -> None
     '''
     Description:
         Poll telemetry including S.M.A.R.T. and others.
