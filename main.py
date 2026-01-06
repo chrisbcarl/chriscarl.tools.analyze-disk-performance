@@ -142,6 +142,14 @@ TODO:
         >>     --flow-duration 360 `
         >>     --size 4GB --value 69 --chunk-size 64MB --log-every 512MB `
         >>     --data-filepath E:/plz
+
+    Replace psutil with custom stuff like
+        psutil.disk_usage('C:')
+            sdiskusage(total=1023185776640, used=372209307648, free=650976468992, percent=36.4)
+        with
+            import json, subprocess
+            data = json.loads(subprocess.check_output('powershell -Command "Get-WmiObject Win32_LogicalDisk | ConvertTo-Json"', shell=True))
+            1 - data[0]['FreeSpace'] / data[0]['Size']  # free
 '''
 # stdlib
 from __future__ import print_function, division
